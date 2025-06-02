@@ -78,8 +78,8 @@ class ProduktResource extends Resource
                                 return number_format($receptura->koszt_calkowity, 2) . ' PLN';
                             }),
                             
-                        Forms\Components\Placeholder::make('opakowanie_koszt')
-                            ->label('Koszt opakowania')
+                        Forms\Components\Placeholder::make('opakowanie_info')
+                            ->label('Informacje o opakowaniu')
                             ->content(function (Get $get) {
                                 $opakownieId = $get('opakowanie_id');
                                 if (!$opakownieId) return 'Wybierz opakowanie';
@@ -87,9 +87,33 @@ class ProduktResource extends Resource
                                 $opakowanie = Opakowanie::find($opakownieId);
                                 if (!$opakowanie) return 'Opakowanie nie znalezione';
                                 
-                                return number_format($opakowanie->cena, 2) . ' PLN';
+                                $info = 'Cena: ' . number_format($opakowanie->cena, 2) . ' PLN';
+                                $info .= ', Pojemność: ' . number_format($opakowanie->pojemnosc, $opakowanie->pojemnosc == intval($opakowanie->pojemnosc) ? 0 : 3) . ' g';
+                                
+                                return $info;
                             }),
                     ])->columns(2),
+                
+                Forms\Components\Placeholder::make('uwaga_pojemnosc')
+                    ->label('Uwaga dotycząca pojemności')
+                    ->content(function ($record) {
+                        if (!$record) return '';
+                        
+                        $meta = is_array($record->meta) ? $record->meta : (json_decode($record->meta, true) ?: []);
+                        
+                        if (isset($meta['uwaga_pojemnosc'])) {
+                            // Zwróć komunikat z uwagą
+                            return new \Illuminate\Support\HtmlString(
+                                '<span style="color: #FBBF24; font-weight: 500;">' . 
+                                $meta['uwaga_pojemnosc'] . 
+                                '</span>'
+                            );
+                        }
+                        
+                        return '';
+                    })
+                    ->visibleOn('edit')
+                    ->columnSpanFull(),
                 
                 Forms\Components\Section::make('Koszty i ceny')
                     ->schema([
@@ -162,11 +186,6 @@ class ProduktResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
             ]);
     }
 

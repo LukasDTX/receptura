@@ -43,6 +43,15 @@ class OpakowanieResource extends Resource
                 Forms\Components\Textarea::make('opis')
                     ->maxLength(65535)
                     ->columnSpanFull(),
+                Forms\Components\TextInput::make('pojemnosc')
+                    ->required()
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.001)
+                    ->label('Pojemność (g)')
+                    ->suffix('g')
+                    ->helperText('Pojemność opakowania w gramach. Przykład: 100g, 250g, 1000g')
+                    ->default(0),
                 Forms\Components\TextInput::make('cena')
                     ->required()
                     ->numeric()
@@ -60,6 +69,11 @@ class OpakowanieResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('kod')
                     ->searchable()
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('pojemnosc')
+                    ->label('Pojemność')
+                    ->formatStateUsing(fn ($state) => number_format($state, $state == intval($state) ? 0 : 3) . ' g')
+                    ->numeric()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('cena')
                     ->money('pln')
@@ -79,11 +93,6 @@ class OpakowanieResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
             ]);
     }
 

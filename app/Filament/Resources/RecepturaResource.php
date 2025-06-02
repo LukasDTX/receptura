@@ -53,6 +53,48 @@ class RecepturaResource extends Resource
                     ->numeric()
                     ->label('Koszt całkowity (za 1kg)')
                     ->helperText('Koszt wytworzenia 1kg produktu według tej receptury.'),
+                    
+                Forms\Components\Placeholder::make('suma_procentowa')
+                    ->label('Suma procentowa składników')
+                    ->content(function ($record) {
+                        if (!$record) return 'Obliczana po zapisaniu receptury';
+                        
+                        // Pobierz świeżą instancję rekordu, aby mieć aktualne dane
+                        $record = Receptura::with('surowce')->find($record->id);
+                        
+                        // Sprawdźmy, czy meta jest tablicą, czy stringiem JSON
+                        $meta = [];
+                        if (is_array($record->meta)) {
+                            $meta = $record->meta;
+                        } elseif (is_string($record->meta)) {
+                            $meta = json_decode($record->meta, true) ?: [];
+                        }
+                        
+                        $sumaProcentowa = $meta['suma_procentowa'] ?? 0;
+                        
+                        // Określ kolor i informację na podstawie wartości
+                        $kolorHex = '#10B981'; // zielony
+                        $informacja = '';
+                        
+                        if ($sumaProcentowa < 99.5) {
+                            $kolorHex = '#FBBF24'; // żółty
+                            $informacja = ' (za mało - składniki stanowią mniej niż 100% produktu)';
+                        } elseif ($sumaProcentowa > 100.5) {
+                            $kolorHex = '#EF4444'; // czerwony
+                            $informacja = ' (za dużo - składniki stanowią więcej niż 100% produktu)';
+                        }
+                        
+                        // Bezpośrednie renderowanie HTML ze stylami inline
+                        $randomId = uniqid();
+                        return new \Illuminate\Support\HtmlString(
+                            '<span id="suma-procentowa-' . $randomId . '" style="color: ' . $kolorHex . '; font-weight: 500;">' . 
+                            number_format($sumaProcentowa, 2) . '%' . 
+                            $informacja . 
+                            '</span>'
+                        );
+                    })
+                    ->extraAttributes(['class' => 'font-bold'])
+                    ->columnSpanFull(),
             ]);
     }
 
@@ -88,11 +130,6 @@ class RecepturaResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
             ]);
     }
 

@@ -16,6 +16,7 @@ class Opakowanie extends Model
         'nazwa',
         'kod',
         'opis',
+        'pojemnosc',
         'cena',
     ];
 

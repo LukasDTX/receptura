@@ -20,6 +20,12 @@ class Produkt extends Model
         'opis',
         'koszt_calkowity',
         'cena_sprzedazy',
+        'meta',
+    ];
+    
+    // Dodajemy atrybut cast, aby pole meta było automatycznie konwertowane z JSON
+    protected $casts = [
+        'meta' => 'array',
     ];
 
     // Dodanie domyślnej wartości dla koszt_calkowity

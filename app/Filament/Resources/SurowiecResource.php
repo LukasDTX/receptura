@@ -40,7 +40,8 @@ class SurowiecResource extends Resource
                     ->required()
                     ->numeric()
                     ->prefix('PLN')
-                    ->default(0),
+                    ->label('Cena 1 kg')
+                    ->default(1),
                 Forms\Components\Select::make('jednostka_miary')
                     ->options([
                         'g' => 'Gram',
@@ -64,7 +65,8 @@ class SurowiecResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('cena_jednostkowa')
                     ->money('pln')
-                    ->sortable(),
+                    ->sortable()
+                    ->label('Cena 1 kg'),
                 Tables\Columns\TextColumn::make('jednostka_miary')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('created_at')
@@ -82,11 +84,6 @@ class SurowiecResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
             ]);
     }
 

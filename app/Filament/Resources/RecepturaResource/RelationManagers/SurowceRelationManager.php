@@ -25,7 +25,43 @@ class SurowceRelationManager extends RelationManager
     
     protected function getTableDescription(): ?string
     {
-        return 'Receptura jest tworzona dla 1kg produktu. Podaj ilości surowców potrzebne do wyprodukowania 1kg.';
+        $record = $this->getOwnerRecord();
+        $sumaProcentowa = 0;
+        
+        if ($record) {
+            $meta = is_array($record->meta) ? $record->meta : (json_decode($record->meta, true) ?? []);
+            $sumaProcentowa = $meta['suma_procentowa'] ?? 0;
+        }
+        
+        $kolor = 'success';
+        $informacja = 'Receptura jest kompletna (suma składników ≈ 100%)';
+        
+        if ($sumaProcentowa < 99.5) {
+            $kolor = 'warning';
+            $informacja = 'Uwaga: suma składników wynosi tylko ' . number_format($sumaProcentowa, 2) . '% (poniżej 100%)';
+        } elseif ($sumaProcentowa > 100.5) {
+            $kolor = 'danger';
+            $informacja = 'Uwaga: suma składników wynosi aż ' . number_format($sumaProcentowa, 2) . '% (powyżej 100%)';
+        } else {
+            $informacja = 'Receptura jest kompletna - suma składników: ' . number_format($sumaProcentowa, 2) . '%';
+        }
+        
+        return "
+        <div class='mb-4'>Receptura jest tworzona dla 1kg produktu. Podaj ilości surowców potrzebne do wyprodukowania 1kg.</div>
+        <div class='p-2 mb-2 rounded-md bg-{$kolor}-100 text-{$kolor}-700 border border-{$kolor}-200'>
+            <div class='flex items-center'>
+                <div class='flex-shrink-0'>
+                    <svg class='h-5 w-5' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='currentColor'>
+                        <path fill-rule='evenodd' d='M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z' clip-rule='evenodd'></path>
+                    </svg>
+                </div>
+                <div class='ml-3'>
+                    <div class='text-sm font-medium'>{$informacja}</div>
+                    <div class='mt-1 text-xs'>* Procenty są obliczone na podstawie wagi składników, zakładając że 1kg = 100%. Dla sztuk procent nie jest wyświetlany.</div>
+                </div>
+            </div>
+        </div>
+        ";
     }
 
     public function form(Form $form): Form
@@ -51,6 +87,25 @@ class SurowceRelationManager extends RelationManager
 
     public function table(Table $table): Table
     {
+        $record = $this->getOwnerRecord();
+        $sumaProcentowa = 0;
+        
+        if ($record) {
+            $meta = $record->meta ?? [];
+            $sumaProcentowa = $meta['suma_procentowa'] ?? 0;
+        }
+        
+        $kolor = 'success';
+        $informacja = '';
+        
+        if ($sumaProcentowa < 99.5) {
+            $kolor = 'warning';
+            $informacja = ' (za mało - składniki stanowią mniej niż 100% produktu)';
+        } elseif ($sumaProcentowa > 100.5) {
+            $kolor = 'danger';
+            $informacja = ' (za dużo - składniki stanowią więcej niż 100% produktu)';
+        }
+        
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('nazwa')
@@ -63,11 +118,49 @@ class SurowceRelationManager extends RelationManager
                         $formatted = is_numeric($state) ? (floor($state) == $state ? (int)$state : $state) : $state;
                         return $formatted . ' ' . $record->jednostka_miary;
                     }),
-                Tables\Columns\TextColumn::make('jednostka_miary')
-                    ->label('Jednostka'),
+                Tables\Columns\TextColumn::make('procent')
+                    ->label('Procent')
+                    ->state(function ($record) {
+                        // Obliczenie procentu składnika w recepturze (na podstawie ilości w gramach)
+                        try {
+                            $ilosc = $record->pivot->ilosc ?? 0;
+                            
+                            // Przeliczenie ilości na gramy, w zależności od jednostki miary
+                            $iloscWGramach = 0;
+                            if ($record->jednostka_miary === 'g') {
+                                $iloscWGramach = $ilosc;
+                            } elseif ($record->jednostka_miary === 'kg') {
+                                $iloscWGramach = $ilosc * 1000;
+                            } elseif ($record->jednostka_miary === 'ml') {
+                                // Dla uproszczenia zakładamy, że 1ml = 1g
+                                $iloscWGramach = $ilosc;
+                            } elseif ($record->jednostka_miary === 'l') {
+                                // Dla uproszczenia zakładamy, że 1l = 1kg = 1000g
+                                $iloscWGramach = $ilosc * 1000;
+                            } else {
+                                // Dla sztuk nie możemy obliczyć procentu wagowego
+                                return 'n/d';
+                            }
+                            
+                            // Obliczenie procentu (zakładamy, że receptura jest na 1kg = 1000g)
+                            $procent = ($iloscWGramach / 1000) * 100;
+                            
+                            // Formatowanie - do dwóch miejsc po przecinku i dodanie znaku %
+                            return number_format($procent, 2) . '%';
+                        } catch (\Exception $e) {
+                            // Dodajemy obsługę błędów, aby zobaczyć, co może pójść nie tak
+                            return 'Błąd: ' . $e->getMessage();
+                        }
+                    })
+                    ->tooltip('Procentowy udział składnika w 1kg produktu'),
                 Tables\Columns\TextColumn::make('cena_jednostkowa')
                     ->label('Cena jedn.')
-                    ->money('pln'),
+                    ->money('pln')
+                    ->label('Cena 1 g')
+                    ->formatStateUsing(function ($state, $record) {
+                        // Formatowanie liczby - ukrycie części dziesiętnej jeśli są same zera
+                        return is_numeric($state) ? number_format($state, 2) : $state;
+                    }),
                 Tables\Columns\TextColumn::make('koszt_calkowity')
                     ->label('Koszt całkowity')
                     ->money('pln')
@@ -106,12 +199,14 @@ class SurowceRelationManager extends RelationManager
                             ->numeric()
                             ->minValue(0.001)
                             ->default(1)
-                            ->suffix(function (Get $get) {
-                                return $get('jednostka');
-                            })
+                            ->suffix(fn (\Filament\Forms\Get $get) => $get('jednostka'))
                             ->helperText('Podaj ilość potrzebną do produkcji 1kg.'),
                     ])
                     ->after(function (RelationManager $livewire): void {
+                        // Odśwież relacje, aby mieć pewność, że mamy najnowsze dane
+                        $livewire->getOwnerRecord()->refresh();
+                        $livewire->getOwnerRecord()->load('surowce');
+                        
                         // Aktualizujemy koszt całkowity receptury po dodaniu surowca
                         $livewire->getOwnerRecord()->obliczKosztCalkowity();
                     }),
@@ -134,6 +229,7 @@ class SurowceRelationManager extends RelationManager
                             ->required()
                             ->numeric()
                             ->prefix('PLN')
+                            ->label('Cena 1 kg')
                             ->default(0),
                         Forms\Components\Select::make('jednostka_miary')
                             ->options([
@@ -163,6 +259,10 @@ class SurowceRelationManager extends RelationManager
                         
                         // Dodajemy surowiec do receptury z określoną ilością
                         $livewire->getOwnerRecord()->surowce()->attach($surowiec->id, ['ilosc' => $ilosc]);
+                        
+                        // Odśwież relacje, aby mieć pewność, że mamy najnowsze dane
+                        $livewire->getOwnerRecord()->refresh();
+                        $livewire->getOwnerRecord()->load('surowce');
                         
                         // Aktualizujemy koszt całkowity receptury
                         $livewire->getOwnerRecord()->obliczKosztCalkowity();
