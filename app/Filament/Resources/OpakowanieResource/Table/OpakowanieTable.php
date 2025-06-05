@@ -15,11 +15,37 @@ class OpakowanieTable
                 Tables\Columns\TextColumn::make('kod')
                     ->searchable()
                     ->sortable(),
-                Tables\Columns\TextColumn::make('pojemnosc')
+                Tables\Columns\TextColumn::make('pojemnosc_formatted')
                     ->label('Pojemność')
-                    ->formatStateUsing(fn ($state) => number_format($state, $state == intval($state) ? 0 : 3) . ' g')
-                    ->numeric()
-                    ->sortable(),
+                    ->getStateUsing(function ($record) {
+                        $jednostka = $record->jednostka instanceof \App\Enums\JednostkaOpakowania 
+                            ? $record->jednostka->value 
+                            : $record->jednostka;
+                        return number_format($record->pojemnosc, $record->pojemnosc == intval($record->pojemnosc) ? 0 : 2) . ' ' . $jednostka;
+                    })
+                    ->sortable('pojemnosc')
+                    ->badge()
+                    ->color(function ($record) {
+                        $jednostka = $record->jednostka instanceof \App\Enums\JednostkaOpakowania 
+                            ? $record->jednostka->value 
+                            : $record->jednostka;
+                        return $jednostka === 'ml' ? 'info' : 'success';
+                    }),
+                Tables\Columns\TextColumn::make('jednostka')
+                    ->label('Typ')
+                    ->formatStateUsing(function ($state) {
+                        $jednostka = $state instanceof \App\Enums\JednostkaOpakowania 
+                            ? $state->value 
+                            : $state;
+                        return $jednostka === 'ml' ? 'Płynny' : 'Stały';
+                    })
+                    ->badge()
+                    ->color(function ($state) {
+                        $jednostka = $state instanceof \App\Enums\JednostkaOpakowania 
+                            ? $state->value 
+                            : $state;
+                        return $jednostka === 'ml' ? 'info' : 'success';
+                    }),
                 Tables\Columns\TextColumn::make('cena')
                     ->money('pln')
                     ->sortable(),
@@ -33,7 +59,12 @@ class OpakowanieTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('jednostka')
+                    ->label('Typ opakowania')
+                    ->options([
+                        'g' => 'Stałe (gramy)',
+                        'ml' => 'Płynne (mililitry)',
+                    ]),
             ])
             ->actions([
                 Tables\Actions\EditAction::make()

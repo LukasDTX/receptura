@@ -69,8 +69,13 @@ class Zlecenie extends Model
                 $iloscPodstawowa = $surowiec->pivot->ilosc; // ilość z receptury dla 1kg
                 $iloscPotrzebna = $iloscPodstawowa * $wspSkalowania * $ilosc;
                 
-                // Przeliczamy na różne jednostki, jeśli potrzeba
+                // Konwersja enum na string
                 $jednostka = $surowiec->jednostka_miary;
+                if ($jednostka instanceof \App\Enums\JednostkaMiary) {
+                    $jednostka = $jednostka->value;
+                } else {
+                    $jednostka = $jednostka ?? 'g';
+                }
                 
                 // Dla kilogramów i litrów, zamieniamy na większą jednostkę, jeśli ilość przekracza 1000
                 if (($jednostka === 'g' && $iloscPotrzebna >= 1000) || 
@@ -148,8 +153,13 @@ class Zlecenie extends Model
                 $iloscPodstawowa = $surowiec->pivot->ilosc; // ilość z receptury dla 1kg
                 $iloscPotrzebna = $iloscPodstawowa * $wspSkalowania * $ilosc;
                 
-                // Przeliczamy na różne jednostki, jeśli potrzeba
+                // Konwersja enum na string
                 $jednostka = $surowiec->jednostka_miary;
+                if ($jednostka instanceof \App\Enums\JednostkaMiary) {
+                    $jednostka = $jednostka->value;
+                } else {
+                    $jednostka = $jednostka ?? 'g';
+                }
                 
                 // Dla kilogramów i litrów, zamieniamy na większą jednostkę, jeśli ilość przekracza 1000
                 if (($jednostka === 'g' && $iloscPotrzebna >= 1000) || 

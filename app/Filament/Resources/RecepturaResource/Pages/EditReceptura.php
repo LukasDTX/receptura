@@ -15,48 +15,85 @@ class EditReceptura extends EditRecord
     {
         return [
             Actions\DeleteAction::make(),
+            Actions\Action::make('refresh')
+                ->label('Odśwież obliczenia')
+                ->icon('heroicon-o-arrow-path')
+                ->color('info')
+                ->action(function () {
+                    try {
+                        $this->record->refresh();
+                        $this->record->load('surowce');
+                        $this->record->obliczKosztCalkowity();
+                        $this->fillForm();
+                        
+                        Notification::make()
+                            ->title('Obliczenia odświeżone')
+                            ->body('Koszt i suma procentowa została przeliczona.')
+                            ->success()
+                            ->send();
+                    } catch (\Exception $e) {
+                        Notification::make()
+                            ->title('Błąd podczas odświeżania')
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->send();
+                    }
+                }),
         ];
     }
 
     protected function afterSave(): void
     {
-        // Przelicz koszt całkowity i sumę procentową
-        $this->record->refresh();    // Odświeżamy, aby mieć pewność, że mamy najnowsze dane
-        $this->record->load('surowce'); // Ładujemy relację surowce
-        $this->record->obliczKosztCalkowity();
-        
-        // Odśwież formularz, aby pokazać nowe wartości
-        $this->fillForm();
-        
-        // Pokaż powiadomienie o sukcesie z informacją o sumie procentowej
-        $sumaProcentowa = $this->record->getSumaProcentowa();
-        
-        $komunikat = 'Receptura została zaktualizowana. Suma procentowa składników: ' . number_format($sumaProcentowa, 2) . '%';
-        $typ = 'success';
-        
-        if ($sumaProcentowa < 99.5) {
-            $komunikat .= ' (poniżej 100% - rozważ dodanie więcej składników)';
-            $typ = 'warning';
-        } elseif ($sumaProcentowa > 100.5) {
-            $komunikat .= ' (powyżej 100% - rozważ zmniejszenie ilości składników)';
-            $typ = 'danger';
+        try {
+            // Przelicz koszt całkowity i sumę procentową
+            $this->record->refresh();
+            $this->record->load('surowce');
+            $this->record->obliczKosztCalkowity();
+            
+            // Odśwież formularz, aby pokazać nowe wartości
+            $this->fillForm();
+            
+            // Pokaż powiadomienie o sukcesie z informacją o sumie procentowej
+            $sumaProcentowa = $this->record->getSumaProcentowa();
+            
+            $komunikat = 'Receptura została zaktualizowana. Suma procentowa składników: ' . number_format($sumaProcentowa, 2) . '%';
+            $typ = 'success';
+            
+            if ($sumaProcentowa < 99.5) {
+                $komunikat .= ' (poniżej 100% - rozważ dodanie więcej składników)';
+                $typ = 'warning';
+            } elseif ($sumaProcentowa > 100.5) {
+                $komunikat .= ' (powyżej 100% - rozważ zmniejszenie ilości składników)';
+                $typ = 'danger';
+            }
+            
+            Notification::make()
+                ->title($komunikat)
+                ->icon($typ === 'success' ? 'heroicon-o-check-circle' : 'heroicon-o-exclamation-circle')
+                ->color($typ)
+                ->send();
+                
+        } catch (\Exception $e) {
+            Notification::make()
+                ->title('Błąd podczas przeliczania')
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
         }
-        
-        Notification::make()
-            ->title($komunikat)
-            ->icon($typ === 'success' ? 'heroicon-o-check-circle' : 'heroicon-o-exclamation-circle')
-            ->iconColor($typ)
-            ->send();
     }
     
     // Dodane, aby po każdej modyfikacji surowców odświeżać dane
     protected function afterFormFilled(): void
     {
-        // Wywołane, gdy formularz jest wypełniany danymi z rekordu
-        // Przelicz koszt całkowity i sumę procentową
-        $this->record->refresh();
-        $this->record->load('surowce');
-        $this->record->obliczKosztCalkowity();
+        try {
+            // Przelicz koszt całkowity i sumę procentową
+            $this->record->refresh();
+            $this->record->load('surowce');
+            $this->record->obliczKosztCalkowity();
+        } catch (\Exception $e) {
+            // Ciche niepowodzenie, aby nie blokować ładowania formularza
+            \Illuminate\Support\Facades\Log::warning('Nie udało się przeliczyć kosztu przy ładowaniu formularza: ' . $e->getMessage());
+        }
     }
     
     // Zapobiega przekierowaniu po zapisie, aby pozostać na stronie edycji
@@ -64,13 +101,13 @@ class EditReceptura extends EditRecord
     {
         return null;
     }
+    
     // Dostosowanie akcji formularza z własnymi nazwami
     protected function getFormActions(): array
     {
         return [
             $this->getSaveFormAction(),
             $this->getCancelFormAction(),
-            //$this->getDeleteAction(), // Opcjonalnie dodaj przycisk usuwania
         ];
     }
     

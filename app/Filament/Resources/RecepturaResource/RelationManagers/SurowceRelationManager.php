@@ -24,10 +24,12 @@ class SurowceRelationManager extends RelationManager
     
     protected static ?string $pluralModelLabel = 'surowce';
     
-    protected function getTableDescription(): ?string
+protected function getTableDescription(): ?string
     {
         $record = $this->getOwnerRecord();
         $sumaProcentowa = 0;
+        $typReceptury = $record->typ_receptury ?? \App\Enums\TypReceptury::GRAMY;
+        $jednostka = $typReceptury === \App\Enums\TypReceptury::GRAMY ? '1kg' : '1l';
         
         if ($record) {
             $meta = is_array($record->meta) ? $record->meta : (json_decode($record->meta, true) ?? []);
@@ -35,20 +37,24 @@ class SurowceRelationManager extends RelationManager
         }
         
         $kolor = 'success';
-        $informacja = 'Receptura jest kompletna (suma składników ≈ 100%)';
+        $informacja = "Receptura jest kompletna (suma składników ≈ 100% dla {$jednostka})";
         
         if ($sumaProcentowa < 99.5) {
             $kolor = 'warning';
-            $informacja = 'Uwaga: suma składników wynosi tylko ' . number_format($sumaProcentowa, 2) . '% (poniżej 100%)';
+            $informacja = "Uwaga: suma składników wynosi tylko " . number_format($sumaProcentowa, 2) . "% (poniżej 100% dla {$jednostka})";
         } elseif ($sumaProcentowa > 100.5) {
             $kolor = 'danger';
-            $informacja = 'Uwaga: suma składników wynosi aż ' . number_format($sumaProcentowa, 2) . '% (powyżej 100%)';
+            $informacja = "Uwaga: suma składników wynosi aż " . number_format($sumaProcentowa, 2) . "% (powyżej 100% dla {$jednostka})";
         } else {
-            $informacja = 'Receptura jest kompletna - suma składników: ' . number_format($sumaProcentowa, 2) . '%';
+            $informacja = "Receptura jest kompletna - suma składników: " . number_format($sumaProcentowa, 2) . "% dla {$jednostka}";
         }
         
+        $typOpis = $typReceptury === \App\Enums\TypReceptury::GRAMY 
+            ? 'liczonej w gramach' 
+            : 'liczonej w mililitrach';
+        
         return "
-        <div class='mb-4'>Receptura jest tworzona dla 1kg produktu. Podaj ilości surowców potrzebne do wyprodukowania 1kg.</div>
+        <div class='mb-4'>Receptura jest tworzona dla {$jednostka} produktu ({$typOpis}). Podaj ilości surowców potrzebne do wyprodukowania {$jednostka}.</div>
         <div class='p-2 mb-2 rounded-md bg-{$kolor}-100 text-{$kolor}-700 border border-{$kolor}-200'>
             <div class='flex items-center'>
                 <div class='flex-shrink-0'>
@@ -58,14 +64,14 @@ class SurowceRelationManager extends RelationManager
                 </div>
                 <div class='ml-3'>
                     <div class='text-sm font-medium'>{$informacja}</div>
-                    <div class='mt-1 text-xs'>* Procenty są obliczone na podstawie wagi składników, zakładając że 1kg = 100%. Dla sztuk procent nie jest wyświetlany.</div>
+                    <div class='mt-1 text-xs'>* Procenty są obliczone na podstawie {$typOpis}, zakładając że {$jednostka} = 100%. Dla sztuk procent nie jest wyświetlany.</div>
                 </div>
             </div>
         </div>
         ";
     }
 
-    public function form(Form $form): Form
+public function form(Form $form): Form
     {
         return $form
             ->schema([
@@ -73,7 +79,25 @@ class SurowceRelationManager extends RelationManager
                     ->hiddenOn('create'),
                 Forms\Components\Select::make('surowiec_id')
                     ->label('Surowiec')
-                    ->options(Surowiec::pluck('nazwa', 'id'))
+                    ->options(function () {
+                        $receptura = $this->getOwnerRecord();
+                        
+                        if (!$receptura || !$receptura->typ_receptury) {
+                            // Fallback - pokaż wszystkie surowce
+                            return \App\Models\Surowiec::pluck('nazwa', 'id');
+                        }
+                        
+                        // Filtruj surowce według typu receptury
+                        if ($receptura->typ_receptury === \App\Enums\TypReceptury::GRAMY) {
+                            $surowce = \App\Models\Surowiec::whereIn('jednostka_miary', ['g', 'kg'])->get();
+                        } elseif ($receptura->typ_receptury === \App\Enums\TypReceptury::MILILITRY) {
+                            $surowce = \App\Models\Surowiec::whereIn('jednostka_miary', ['ml', 'l'])->get();
+                        } else {
+                            $surowce = \App\Models\Surowiec::all();
+                        }
+                        
+                        return $surowce->pluck('nazwa', 'id');
+                    })
                     ->required()
                     ->searchable()
                     ->preload(),
@@ -96,17 +120,6 @@ class SurowceRelationManager extends RelationManager
             $sumaProcentowa = $meta['suma_procentowa'] ?? 0;
         }
         
-        $kolor = 'success';
-        $informacja = '';
-        
-        if ($sumaProcentowa < 99.5) {
-            $kolor = 'warning';
-            $informacja = ' (za mało - składniki stanowią mniej niż 100% produktu)';
-        } elseif ($sumaProcentowa > 100.5) {
-            $kolor = 'danger';
-            $informacja = ' (za dużo - składniki stanowią więcej niż 100% produktu)';
-        }
-        
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('nazwa')
@@ -118,7 +131,7 @@ class SurowceRelationManager extends RelationManager
                         // Formatowanie liczby
                         $formatted = is_numeric($state) ? (floor($state) == $state ? (int)$state : $state) : $state;
                         
-                        // Użyj ->value aby otrzymać string z enum
+                        // Jednostka z enum
                         $jednostka = $record->jednostka_miary instanceof \App\Enums\JednostkaMiary 
                             ? $record->jednostka_miary->value 
                             : $record->jednostka_miary;
@@ -128,45 +141,38 @@ class SurowceRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('procent')
                     ->label('Procent')
                     ->state(function ($record) {
-                        // Obliczenie procentu składnika w recepturze (na podstawie ilości w gramach)
                         try {
                             $ilosc = $record->pivot->ilosc ?? 0;
                             
-                            // Przeliczenie ilości na gramy, w zależności od jednostki miary
-                            $iloscWGramach = 0;
-                            if ($record->jednostka_miary === 'g') {
-                                $iloscWGramach = $ilosc;
-                            } elseif ($record->jednostka_miary === 'kg') {
-                                $iloscWGramach = $ilosc * 1000;
-                            } elseif ($record->jednostka_miary === 'ml') {
-                                // Dla uproszczenia zakładamy, że 1ml = 1g
-                                $iloscWGramach = $ilosc;
-                            } elseif ($record->jednostka_miary === 'l') {
-                                // Dla uproszczenia zakładamy, że 1l = 1kg = 1000g
-                                $iloscWGramach = $ilosc * 1000;
+                            // Przeliczenie ilości na jednostki bazowe (zawsze 1000)
+                            $iloscWBazowejJednostce = 0;
+                            $jednostka = $record->jednostka_miary instanceof \App\Enums\JednostkaMiary 
+                                ? $record->jednostka_miary->value 
+                                : $record->jednostka_miary;
+                                
+                            if ($jednostka === 'g' || $jednostka === 'ml') {
+                                $iloscWBazowejJednostce = $ilosc;
+                            } elseif ($jednostka === 'kg' || $jednostka === 'l') {
+                                $iloscWBazowejJednostce = $ilosc * 1000;
                             } else {
-                                // Dla sztuk nie możemy obliczyć procentu wagowego
+                                // Dla sztuk nie możemy obliczyć procentu wagowego/objętościowego
                                 return 'n/d';
                             }
                             
-                            // Obliczenie procentu (zakładamy, że receptura jest na 1kg = 1000g)
-                            $procent = ($iloscWGramach / 1000) * 100;
+                            // Obliczenie procentu (zawsze dla 1000 jednostek bazowych)
+                            $procent = ($iloscWBazowejJednostce / 1000) * 100;
                             
-                            // Formatowanie - do dwóch miejsc po przecinku i dodanie znaku %
                             return number_format($procent, 2) . '%';
                         } catch (\Exception $e) {
-                            // Dodajemy obsługę błędów, aby zobaczyć, co może pójść nie tak
                             return 'Błąd: ' . $e->getMessage();
                         }
                     })
-                    ->tooltip('Procentowy udział składnika w 1kg produktu'),
+                    ->tooltip('Procentowy udział składnika w recepturze'),
                 Tables\Columns\TextColumn::make('cena_jednostkowa')
                     ->label('Cena jedn.')
                     ->money('pln')
-                    ->label('Cena 1 g')
                     ->formatStateUsing(function ($state, $record) {
-                        // Formatowanie liczby - ukrycie części dziesiętnej jeśli są same zera
-                        return is_numeric($state) ? number_format($state, 2) : $state;
+                        return number_format($state, 2);
                     }),
                 Tables\Columns\TextColumn::make('koszt_calkowity')
                     ->label('Koszt całkowity')
@@ -183,6 +189,22 @@ class SurowceRelationManager extends RelationManager
                     ->label('Dodaj istniejący surowiec')
                     ->modalHeading('Dodaj surowiec do receptury')
                     ->preloadRecordSelect()
+                    ->recordSelectOptionsQuery(function () {
+                        $receptura = $this->getOwnerRecord();
+                        
+                        if (!$receptura || !$receptura->typ_receptury) {
+                            return \App\Models\Surowiec::query();
+                        }
+                        
+                        // Filtruj surowce według typu receptury
+                        if ($receptura->typ_receptury === \App\Enums\TypReceptury::GRAMY) {
+                            return \App\Models\Surowiec::whereIn('jednostka_miary', ['g', 'kg']);
+                        } elseif ($receptura->typ_receptury === \App\Enums\TypReceptury::MILILITRY) {
+                            return \App\Models\Surowiec::whereIn('jednostka_miary', ['ml', 'l']);
+                        }
+                        
+                        return \App\Models\Surowiec::query();
+                    })
                     ->form(fn (Tables\Actions\AttachAction $action): array => [
                         $action->getRecordSelect()
                             ->label('Surowiec')
@@ -193,9 +215,12 @@ class SurowceRelationManager extends RelationManager
                                     return;
                                 }
                                 
-                                $surowiec = Surowiec::find($state);
+                                $surowiec = \App\Models\Surowiec::find($state);
                                 if ($surowiec) {
-                                    $set('jednostka', $surowiec->jednostka_miary);
+                                    $jednostka = $surowiec->jednostka_miary instanceof \App\Enums\JednostkaMiary 
+                                        ? $surowiec->jednostka_miary->value 
+                                        : $surowiec->jednostka_miary;
+                                    $set('jednostka', $jednostka);
                                 }
                             })
                             ->required(),
@@ -207,14 +232,15 @@ class SurowceRelationManager extends RelationManager
                             ->minValue(0.001)
                             ->default(1)
                             ->suffix(fn (\Filament\Forms\Get $get) => $get('jednostka'))
-                            ->helperText('Podaj ilość potrzebną do produkcji 1kg.'),
+                            ->helperText(function () {
+                                $receptura = $this->getOwnerRecord();
+                                $jednostka = $receptura->typ_receptury === \App\Enums\TypReceptury::GRAMY ? '1kg' : '1l';
+                                return "Podaj ilość potrzebną do produkcji {$jednostka}.";
+                            }),
                     ])
                     ->after(function (RelationManager $livewire): void {
-                        // Odśwież relacje, aby mieć pewność, że mamy najnowsze dane
                         $livewire->getOwnerRecord()->refresh();
                         $livewire->getOwnerRecord()->load('surowce');
-                        
-                        // Aktualizujemy koszt całkowity receptury po dodaniu surowca
                         $livewire->getOwnerRecord()->obliczKosztCalkowity();
                     }),
                 Tables\Actions\Action::make('createSurowiec')
@@ -222,50 +248,68 @@ class SurowceRelationManager extends RelationManager
                     ->modalHeading('Utwórz nowy surowiec')
                     ->icon('heroicon-o-plus')
                     ->color('success')
-                    ->form([
-                        Forms\Components\TextInput::make('nazwa')
-                            ->required()
-                            ->maxLength(255),
-                        Forms\Components\TextInput::make('kod')
-                            ->required()
-                            ->unique(Surowiec::class)
-                            ->maxLength(255),
-                        Forms\Components\Textarea::make('opis')
-                            ->maxLength(65535),
-                        Forms\Components\TextInput::make('cena_jednostkowa')
-                            ->required()
-                            ->numeric()
-                            ->prefix('PLN')
-                            ->label('Cena 1 kg')
-                            ->default(0),
-                        Forms\Components\Select::make('jednostka_miary')
-                            ->options(JednostkaMiary::class)
-                            ->default(JednostkaMiary::G)
-                            ->required(),
-                        Forms\Components\TextInput::make('ilosc')
-                            ->label('Ilość do dodania')
-                            ->required()
-                            ->numeric()
-                            ->minValue(0.001)
-                            ->default(1)
-                            ->helperText('Podaj ilość potrzebną do produkcji 1kg.'),
-                    ])
+                    ->form(function () {
+                        $receptura = $this->getOwnerRecord();
+                        $dozwoloneJednostki = [];
+                        
+                        if ($receptura->typ_receptury === \App\Enums\TypReceptury::GRAMY) {
+                            $dozwoloneJednostki = [
+                                \App\Enums\JednostkaMiary::G,
+                                \App\Enums\JednostkaMiary::KG,
+                            ];
+                        } elseif ($receptura->typ_receptury === \App\Enums\TypReceptury::MILILITRY) {
+                            $dozwoloneJednostki = [
+                                \App\Enums\JednostkaMiary::ML,
+                                \App\Enums\JednostkaMiary::L,
+                            ];
+                        } else {
+                            $dozwoloneJednostki = \App\Enums\JednostkaMiary::cases();
+                        }
+                        
+                        return [
+                            Forms\Components\TextInput::make('nazwa')
+                                ->required()
+                                ->maxLength(255),
+                            Forms\Components\TextInput::make('kod')
+                                ->required()
+                                ->unique(\App\Models\Surowiec::class)
+                                ->maxLength(255),
+                            Forms\Components\Textarea::make('opis')
+                                ->maxLength(65535),
+                            Forms\Components\TextInput::make('cena_jednostkowa')
+                                ->required()
+                                ->numeric()
+                                ->prefix('PLN')
+                                ->label('Cena jednostkowa')
+                                ->default(0),
+                            Forms\Components\Select::make('jednostka_miary')
+                                ->options(collect($dozwoloneJednostki)->mapWithKeys(fn($jednostka) => [
+                                    $jednostka->value => $jednostka->label()
+                                ])->toArray())
+                                ->default($dozwoloneJednostki[0]->value ?? 'g')
+                                ->required(),
+                            Forms\Components\TextInput::make('ilosc')
+                                ->label('Ilość do dodania')
+                                ->required()
+                                ->numeric()
+                                ->minValue(0.001)
+                                ->default(1)
+                                ->helperText(function () {
+                                    $receptura = $this->getOwnerRecord();
+                                    $jednostka = $receptura->typ_receptury === \App\Enums\TypReceptury::GRAMY ? '1kg' : '1l';
+                                    return "Podaj ilość potrzebną do produkcji {$jednostka}.";
+                                }),
+                        ];
+                    })
                     ->action(function (array $data, RelationManager $livewire): void {
-                        // Oddzielamy dane surowca od ilości
                         $ilosc = $data['ilosc'];
                         unset($data['ilosc']);
                         
-                        // Tworzymy nowy surowiec
-                        $surowiec = Surowiec::create($data);
-                        
-                        // Dodajemy surowiec do receptury z określoną ilością
+                        $surowiec = \App\Models\Surowiec::create($data);
                         $livewire->getOwnerRecord()->surowce()->attach($surowiec->id, ['ilosc' => $ilosc]);
                         
-                        // Odśwież relacje, aby mieć pewność, że mamy najnowsze dane
                         $livewire->getOwnerRecord()->refresh();
                         $livewire->getOwnerRecord()->load('surowce');
-                        
-                        // Aktualizujemy koszt całkowity receptury
                         $livewire->getOwnerRecord()->obliczKosztCalkowity();
                     }),
             ])
@@ -274,6 +318,10 @@ class SurowceRelationManager extends RelationManager
                     ->label('Edytuj ilość')
                     ->modalHeading('Edytuj ilość surowca')
                     ->form(function ($record) {
+                        $jednostka = $record->jednostka_miary instanceof \App\Enums\JednostkaMiary 
+                            ? $record->jednostka_miary->value 
+                            : $record->jednostka_miary;
+                            
                         return [
                             Forms\Components\Grid::make()
                                 ->schema([
@@ -282,9 +330,8 @@ class SurowceRelationManager extends RelationManager
                                         ->required()
                                         ->numeric()
                                         ->minValue(0.001)
-                                        // Ukrywamy część dziesiętną jeśli wszystkie cyfry po przecinku to zera
                                         ->formatStateUsing(fn ($state) => is_numeric($state) ? (floor($state) == $state ? (int)$state : $state) : $state)
-                                        ->suffix($record->jednostka_miary),
+                                        ->suffix($jednostka),
                                     
                                     Forms\Components\Placeholder::make('koszt')
                                         ->label('Koszt')
@@ -299,35 +346,26 @@ class SurowceRelationManager extends RelationManager
                             
                             Forms\Components\Placeholder::make('info')
                                 ->label('')
-                                ->content(function ($get) use ($record) {
-                                    return 'Cena jednostkowa: ' . number_format($record->cena_jednostkowa, 2) . ' PLN/' . $record->jednostka_miary;
+                                ->content(function () use ($record, $jednostka) {
+                                    return 'Cena jednostkowa: ' . number_format($record->cena_jednostkowa, 2) . ' PLN/' . $jednostka;
                                 })
                                 ->extraAttributes(['class' => 'text-sm text-gray-500']),
                         ];
                     })
                     ->fillForm(function ($record) {
-                        // Pobierz aktualną ilość z tabeli pivot
-                        return [
-                            'ilosc' => $record->pivot->ilosc,
-                        ];
+                        return ['ilosc' => $record->pivot->ilosc];
                     })
                     ->using(function (array $data, $record) {
-                        // Zaktualizuj dane w tabeli pivot bezpośrednio
-                        $record->pivot->update([
-                            'ilosc' => $data['ilosc'],
-                        ]);
-                        
+                        $record->pivot->update(['ilosc' => $data['ilosc']]);
                         return $record;
                     })
                     ->after(function (RelationManager $livewire): void {
-                        // Aktualizujemy koszt całkowity receptury po zmianie ilości
                         $livewire->getOwnerRecord()->obliczKosztCalkowity();
                     }),
                 Tables\Actions\DetachAction::make()
                     ->label('Usuń')
                     ->modalHeading('Usuń surowiec z receptury')
                     ->after(function (RelationManager $livewire): void {
-                        // Aktualizujemy koszt całkowity receptury po usunięciu surowca
                         $livewire->getOwnerRecord()->obliczKosztCalkowity();
                     }),
             ])
@@ -336,7 +374,6 @@ class SurowceRelationManager extends RelationManager
                     Tables\Actions\DetachBulkAction::make()
                         ->label('Usuń zaznaczone')
                         ->after(function (RelationManager $livewire): void {
-                            // Aktualizujemy koszt całkowity receptury po masowym usunięciu surowców
                             $livewire->getOwnerRecord()->obliczKosztCalkowity();
                         }),
                 ]),

@@ -41,7 +41,7 @@ class ProduktResource extends Resource
                     ->maxLength(65535)
                     ->columnSpanFull(),
                 
-                Forms\Components\Section::make('Komponenty produktu')
+Forms\Components\Section::make('Komponenty produktu')
                     ->description('Wybierz recepturę (półprodukt) i opakowanie')
                     ->schema([
                         Select::make('receptura_id')
@@ -53,18 +53,60 @@ class ProduktResource extends Resource
                             ->preload()
                             ->required()
                             ->reactive()
-                            ->afterStateUpdated(fn (callable $set) => $set('koszt_calkowity', null)),
+                            ->afterStateUpdated(function (callable $set, callable $get) {
+                                $set('koszt_calkowity', null);
+                                // Wyczyść opakowanie gdy zmienia się receptura
+                                $set('opakowanie_id', null);
+                            }),
                             
                         Select::make('opakowanie_id')
                             ->label('Opakowanie')
-                            ->options(function () {
-                                return Opakowanie::all()->pluck('nazwa', 'id');
+                            ->options(function (callable $get) {
+                                $recepturaId = $get('receptura_id');
+                                
+                                if (!$recepturaId) {
+                                    return \App\Models\Opakowanie::all()->pluck('nazwa', 'id');
+                                }
+                                
+                                // Pobierz recepturę i sprawdź jej typ
+                                $receptura = \App\Models\Receptura::find($recepturaId);
+                                if (!$receptura) {
+                                    return \App\Models\Opakowanie::all()->pluck('nazwa', 'id');
+                                }
+                                
+                                // Filtruj opakowania według typu receptury
+                                if ($receptura->typ_receptury === \App\Enums\TypReceptury::GRAMY) {
+                                    $opakowania = \App\Models\Opakowanie::where('jednostka', 'g')->get();
+                                } elseif ($receptura->typ_receptury === \App\Enums\TypReceptury::MILILITRY) {
+                                    $opakowania = \App\Models\Opakowanie::where('jednostka', 'ml')->get();
+                                } else {
+                                    $opakowania = \App\Models\Opakowanie::all();
+                                }
+                                
+                                return $opakowania->mapWithKeys(function ($opakowanie) {
+                                    $jednostka = $opakowanie->jednostka instanceof \App\Enums\JednostkaOpakowania 
+                                        ? $opakowanie->jednostka->value 
+                                        : $opakowanie->jednostka;
+                                    return [$opakowanie->id => $opakowanie->nazwa . ' (' . $opakowanie->pojemnosc . $jednostka . ')'];
+                                });
                             })
                             ->searchable()
                             ->preload()
                             ->required()
                             ->reactive()
-                            ->afterStateUpdated(fn (callable $set) => $set('koszt_calkowity', null)),
+                            ->afterStateUpdated(fn (callable $set) => $set('koszt_calkowity', null))
+                            ->helperText(function (callable $get) {
+                                $recepturaId = $get('receptura_id');
+                                if (!$recepturaId) {
+                                    return 'Najpierw wybierz recepturę';
+                                }
+                                
+                                $receptura = \App\Models\Receptura::find($recepturaId);
+                                if (!$receptura) return '';
+                                
+                                $typ = $receptura->typ_receptury === \App\Enums\TypReceptury::GRAMY ? 'stałych (gramy)' : 'płynnych (mililitry)';
+                                return "Dostępne są tylko opakowania dla produktów {$typ}";
+                            }),
                             
                         Forms\Components\Placeholder::make('receptura_koszt')
                             ->label('Koszt receptury')
@@ -75,7 +117,8 @@ class ProduktResource extends Resource
                                 $receptura = Receptura::find($recepturaId);
                                 if (!$receptura) return 'Receptura nie znaleziona';
                                 
-                                return number_format($receptura->koszt_calkowity, 2) . ' PLN';
+                                $jednostka = $receptura->typ_receptury === \App\Enums\TypReceptury::GRAMY ? '1kg' : '1l';
+                                return number_format($receptura->koszt_calkowity, 2) . ' PLN/' . $jednostka;
                             }),
                             
                         Forms\Components\Placeholder::make('opakowanie_info')
@@ -87,8 +130,13 @@ class ProduktResource extends Resource
                                 $opakowanie = Opakowanie::find($opakownieId);
                                 if (!$opakowanie) return 'Opakowanie nie znalezione';
                                 
+                                $jednostka = $opakowanie->jednostka instanceof \App\Enums\JednostkaOpakowania 
+                                    ? $opakowanie->jednostka->value 
+                                    : $opakowanie->jednostka;
+                                
                                 $info = 'Cena: ' . number_format($opakowanie->cena, 2) . ' PLN';
-                                $info .= ', Pojemność: ' . number_format($opakowanie->pojemnosc, $opakowanie->pojemnosc == intval($opakowanie->pojemnosc) ? 0 : 3) . ' g';
+                                $info .= ', Pojemność: ' . number_format($opakowanie->pojemnosc, $opakowanie->pojemnosc == intval($opakowanie->pojemnosc) ? 0 : 2) . ' ' . $jednostka;
+                                $info .= ', Typ: ' . ($jednostka === 'ml' ? 'płynny' : 'stały');
                                 
                                 return $info;
                             }),

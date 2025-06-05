@@ -110,9 +110,16 @@ class ZlecenieResource extends Resource
                                         return 'warning';
                                     })
                                     ->visible(fn (Get $get) => $get('produkt_id') !== null)
-                                    ->action(function (Set $set, Get $get, $record, $livewire) {
+->action(function (Set $set, Get $get, $record, $livewire) {
                                         $produktId = $get('produkt_id');
                                         $ilosc = $get('ilosc');
+                                        
+                                        // Debug logging
+                                        \Illuminate\Support\Facades\Log::info('Przelicz surowce - start', [
+                                            'produkt_id' => $produktId,
+                                            'ilosc' => $ilosc,
+                                            'record_exists' => $record ? 'tak' : 'nie'
+                                        ]);
                                         
                                         if ($ilosc === null || $ilosc === '' || !is_numeric($ilosc)) {
                                             \Filament\Notifications\Notification::make()
@@ -189,7 +196,14 @@ class ZlecenieResource extends Resource
                                                 }
                                             }
                                             
-                                            $jednostka = $surowiec->jednostka ?? $surowiec->jednostka_miary ?? 'g';
+                                            // Konwersja enum na string
+                                            $jednostka = $surowiec->jednostka_miary;
+                                            if ($jednostka instanceof \App\Enums\JednostkaMiary) {
+                                                $jednostka = $jednostka->value;
+                                            } else {
+                                                $jednostka = $jednostka ?? 'g';
+                                            }
+                                            
                                             $kostSurowca = $gramySurowcaNaZlecenie * $cenaSurowca;
                                             
                                             $surowcePotrzebne[] = [
@@ -220,6 +234,12 @@ class ZlecenieResource extends Resource
                                             ];
                                         }
                                         
+                                        // Debug - sprawdź czy są surowce
+                                        \Illuminate\Support\Facades\Log::info('Obliczone surowce', [
+                                            'count' => count($surowcePotrzebne),
+                                            'surowce' => $surowcePotrzebne
+                                        ]);
+                                        
                                         if ($record) {
                                             $record->update([
                                                 'surowce_potrzebne' => $surowcePotrzebne,
@@ -234,7 +254,17 @@ class ZlecenieResource extends Resource
                                             
                                             redirect(request()->header('Referer'));
                                         } else {
+                                            // Zapisz do sesji z unikalnym kluczem
+                                            $sessionKey = 'temp_surowce_potrzebne_' . uniqid();
+                                            session([$sessionKey => $surowcePotrzebne]);
                                             session(['temp_surowce_potrzebne' => $surowcePotrzebne]);
+                                            
+                                            // Debug sesji
+                                            \Illuminate\Support\Facades\Log::info('Zapisano do sesji', [
+                                                'session_key' => $sessionKey,
+                                                'session_data' => session('temp_surowce_potrzebne'),
+                                                'session_all_keys' => array_keys(session()->all())
+                                            ]);
                                             
                                             $set('surowce_przeliczone', true);
                                             

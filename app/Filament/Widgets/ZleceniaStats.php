@@ -26,9 +26,15 @@ class ZleceniaStats extends BaseWidget
         foreach ($surowcePotrzebne as $id => $dane) {
             if ($licznik >= 3) break; // Wyświetl tylko top 3
             
+            // Konwersja enum na string dla jednostki
+            $jednostka = $dane['jednostka'];
+            if ($jednostka instanceof \App\Enums\JednostkaMiary) {
+                $jednostka = $jednostka->value;
+            }
+            
             $topSurowce .= ($licznik > 0 ? ', ' : '') . $dane['nazwa'] . ': ' . 
-                number_format($dane['ilosc'], $dane['jednostka'] === 'kg' || $dane['jednostka'] === 'l' ? 3 : 0) . ' ' . 
-                $dane['jednostka'];
+                number_format($dane['ilosc'], $jednostka === 'kg' || $jednostka === 'l' ? 3 : 0) . ' ' . 
+                $jednostka;
             
             $licznik++;
         }

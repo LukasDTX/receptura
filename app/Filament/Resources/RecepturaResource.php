@@ -31,8 +31,7 @@ class RecepturaResource extends Resource
     {
         return static::getModel()::count();
     }
-
-    public static function form(Form $form): Form
+public static function form(Form $form): Form
     {
         return $form
             ->schema([
@@ -40,9 +39,70 @@ class RecepturaResource extends Resource
                     ->required()
                     ->maxLength(255),
                 Forms\Components\TextInput::make('kod')
+                    ->label('Kod receptury')
+                    ->default(function () {
+                        // Kompatybilna wersja dla PostgreSQL i MySQL
+                        try {
+                            // Pobierz wszystkie kody zaczynające się od 'RCP-'
+                            $kody = \App\Models\Receptura::where('kod', 'LIKE', 'RCP-%')
+                                ->pluck('kod')
+                                ->toArray();
+                            
+                            $najwyzszyNumer = 0;
+                            
+                            foreach ($kody as $kod) {
+                                // Wyciągnij numer z kodu (po 'RCP-')
+                                if (preg_match('/^RCP-(\d+)$/', $kod, $matches)) {
+                                    $numer = (int) $matches[1];
+                                    if ($numer > $najwyzszyNumer) {
+                                        $najwyzszyNumer = $numer;
+                                    }
+                                }
+                            }
+                            
+                            $nowyNumer = $najwyzszyNumer + 1;
+                            return 'RCP-' . $nowyNumer;
+                            
+                        } catch (\Exception $e) {
+                            // Fallback - użyj count + 1
+                            $count = \App\Models\Receptura::count();
+                            return 'RCP-' . ($count + 1);
+                        }
+                    })
                     ->required()
                     ->unique(ignorable: fn ($record) => $record)
-                    ->maxLength(255),
+                    ->readonly()
+                    ->helperText('Kod generowany automatycznie w formacie RCP-numer'),
+                Forms\Components\Select::make('typ_receptury')
+                    ->label('Typ receptury')
+                    ->options([
+                        'gramy' => 'Liczony w gramach (1kg = 1000g)',
+                        'mililitry' => 'Liczony w mililitrach (1l = 1000ml)',
+                    ])
+                    ->default('gramy')
+                    ->required()
+                    ->disabled(fn ($context) => $context === 'edit')
+                    ->dehydrated()
+                    ->helperText(function ($context) {
+                        if ($context === 'edit') {
+                            return 'Typ receptury można zmienić tylko podczas tworzenia nowej receptury.';
+                        }
+                        return 'Określa czy receptura jest tworzona na podstawie wagi (gramy) czy objętości (mililitry). Nie można zmienić po utworzeniu.';
+                    }),
+                Forms\Components\Placeholder::make('typ_receptury_info')
+                    ->label('Typ receptury')
+                    ->content(function ($record) {
+                        if (!$record) return '';
+                        
+                        $typ = $record->typ_receptury;
+                        if ($typ === \App\Enums\TypReceptury::GRAMY) {
+                            return '📏 Receptura liczona w gramach (1kg = 1000g)';
+                        } else {
+                            return '🥤 Receptura liczona w mililitrach (1l = 1000ml)';
+                        }
+                    })
+                    ->visibleOn('edit')
+                    ->extraAttributes(['class' => 'text-blue-600 font-medium']),
                 Forms\Components\Textarea::make('opis')
                     ->maxLength(65535)
                     ->columnSpanFull(),
@@ -51,53 +111,82 @@ class RecepturaResource extends Resource
                     ->dehydrated(false)
                     ->prefix('PLN')
                     ->numeric()
-                    ->label('Koszt całkowity (za 1kg)')
-                    ->helperText('Koszt wytworzenia 1kg produktu według tej receptury.'),
+                    ->label('Koszt całkowity')
+                    ->helperText(function ($record) {
+                        if (!$record) return 'Koszt wytworzenia według tej receptury.';
+                        
+                        $jednostka = $record->typ_receptury === \App\Enums\TypReceptury::GRAMY ? '1kg' : '1l';
+                        return "Koszt wytworzenia {$jednostka} produktu według tej receptury.";
+                    }),
                     
                 Forms\Components\Placeholder::make('suma_procentowa')
                     ->label('Suma procentowa składników')
                     ->content(function ($record) {
                         if (!$record) return 'Obliczana po zapisaniu receptury';
                         
-                        // Pobierz świeżą instancję rekordu, aby mieć aktualne dane
-                        $record = Receptura::with('surowce')->find($record->id);
-                        
-                        // Sprawdźmy, czy meta jest tablicą, czy stringiem JSON
-                        $meta = [];
-                        if (is_array($record->meta)) {
-                            $meta = $record->meta;
-                        } elseif (is_string($record->meta)) {
-                            $meta = json_decode($record->meta, true) ?: [];
+                        try {
+                            // Pobierz świeżą instancję rekordu z relacjami
+                            $freshRecord = \App\Models\Receptura::with('surowce')->find($record->id);
+                            
+                            if (!$freshRecord) {
+                                return 'Nie można pobrać danych receptury';
+                            }
+                            
+                            // Sprawdź meta dane
+                            $meta = [];
+                            if (is_array($freshRecord->meta)) {
+                                $meta = $freshRecord->meta;
+                            } elseif (is_string($freshRecord->meta)) {
+                                $meta = json_decode($freshRecord->meta, true) ?: [];
+                            }
+                            
+                            $sumaProcentowa = $meta['suma_procentowa'] ?? 0;
+                            
+                            // Jeśli suma jest 0, spróbuj przeliczyć na nowo
+                            if ($sumaProcentowa == 0 && $freshRecord->surowce->count() > 0) {
+                                $freshRecord->obliczKosztCalkowity();
+                                $freshRecord->refresh();
+                                
+                                $meta = is_array($freshRecord->meta) ? $freshRecord->meta : (json_decode($freshRecord->meta, true) ?: []);
+                                $sumaProcentowa = $meta['suma_procentowa'] ?? 0;
+                            }
+                            
+                            $jednostka = $freshRecord->typ_receptury === \App\Enums\TypReceptury::GRAMY ? '1kg' : '1l';
+                            
+                            // Określ kolor i informację na podstawie wartości
+                            $kolorHex = '#10B981'; // zielony
+                            $informacja = '';
+                            
+                            if ($sumaProcentowa < 99.5) {
+                                $kolorHex = '#FBBF24'; // żółty
+                                $informacja = " (za mało - składniki stanowią mniej niż 100% {$jednostka})";
+                            } elseif ($sumaProcentowa > 100.5) {
+                                $kolorHex = '#EF4444'; // czerwony
+                                $informacja = " (za dużo - składniki stanowią więcej niż 100% {$jednostka})";
+                            }
+                            
+                            return new \Illuminate\Support\HtmlString(
+                                '<div style="color: ' . $kolorHex . '; font-weight: 500; font-size: 16px;">' . 
+                                number_format($sumaProcentowa, 2) . '%' . 
+                                $informacja . 
+                                '</div>' .
+                                '<div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Dla ' . $jednostka . ' produktu</div>'
+                            );
+                            
+                        } catch (\Exception $e) {
+                            \Illuminate\Support\Facades\Log::error('Błąd podczas wyświetlania sumy procentowej: ' . $e->getMessage(), [
+                                'receptura_id' => $record->id ?? null,
+                                'exception' => $e,
+                            ]);
+                            
+                            return 'Błąd podczas obliczania: ' . $e->getMessage();
                         }
-                        
-                        $sumaProcentowa = $meta['suma_procentowa'] ?? 0;
-                        
-                        // Określ kolor i informację na podstawie wartości
-                        $kolorHex = '#10B981'; // zielony
-                        $informacja = '';
-                        
-                        if ($sumaProcentowa < 99.5) {
-                            $kolorHex = '#FBBF24'; // żółty
-                            $informacja = ' (za mało - składniki stanowią mniej niż 100% produktu)';
-                        } elseif ($sumaProcentowa > 100.5) {
-                            $kolorHex = '#EF4444'; // czerwony
-                            $informacja = ' (za dużo - składniki stanowią więcej niż 100% produktu)';
-                        }
-                        
-                        // Bezpośrednie renderowanie HTML ze stylami inline
-                        $randomId = uniqid();
-                        return new \Illuminate\Support\HtmlString(
-                            '<span id="suma-procentowa-' . $randomId . '" style="color: ' . $kolorHex . '; font-weight: 500;">' . 
-                            number_format($sumaProcentowa, 2) . '%' . 
-                            $informacja . 
-                            '</span>'
-                        );
                     })
                     ->extraAttributes(['class' => 'font-bold'])
                     ->columnSpanFull(),
             ]);
     }
-    public static function table(Table $table): Table
+public static function table(Table $table): Table
     {
         return $table
             ->columns([
@@ -107,6 +196,18 @@ class RecepturaResource extends Resource
                 Tables\Columns\TextColumn::make('kod')
                     ->searchable()
                     ->sortable(),
+                Tables\Columns\SelectColumn::make('typ_receptury')
+                    ->label('Typ')
+                    ->options([
+                        'gramy' => 'Gramy',
+                        'mililitry' => 'Mililitry',
+                    ])
+                    ->disabled()
+                    ->tooltip(function ($record) {
+                        return $record->typ_receptury === \App\Enums\TypReceptury::GRAMY 
+                            ? 'Receptura liczona w gramach (1kg = 1000g)' 
+                            : 'Receptura liczona w mililitrach (1l = 1000ml)';
+                    }),
                 Tables\Columns\TextColumn::make('koszt_calkowity')
                     ->label('Koszt całkowity')
                     ->money('pln')
@@ -127,20 +228,17 @@ class RecepturaResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('typ_receptury')
+                    ->label('Typ receptury')
+                    ->options([
+                        'gramy' => 'Gramy',
+                        'mililitry' => 'Mililitry',
+                    ]),
             ])
             ->actions([
                 Tables\Actions\EditAction::make()
                     ->label('Edytuj')
                     ->icon('heroicon-o-pencil'),
-                // Tables\Actions\DeleteAction::make()
-                //     ->label('Usuń')
-                //     ->icon('heroicon-o-trash')
-                //     ->requiresConfirmation()
-                //     ->modalHeading('Usuń recepturę')
-                //     ->modalDescription('Czy na pewno chcesz usunąć ten recepturę? Ta akcja jest nieodwracalna.')
-                //     ->modalSubmitActionLabel('Usuń')
-                //     ->modalCancelActionLabel('Anuluj'),
             ]);
     }
 

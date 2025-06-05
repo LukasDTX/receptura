@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\TypReceptury;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -16,13 +17,14 @@ class Receptura extends Model
     protected $fillable = [
         'nazwa',
         'kod',
+        'typ_receptury',
         'opis',
         'koszt_calkowity',
         'meta',
     ];
     
-    // Dodajemy atrybut cast, aby pole meta było automatycznie konwertowane z JSON
     protected $casts = [
+        'typ_receptury' => TypReceptury::class,
         'meta' => 'array',
     ];
 
@@ -40,80 +42,138 @@ class Receptura extends Model
 
     public function obliczKosztCalkowity()
     {
-        $koszt = 0;
-        $sumaProcentowa = 0;
-
-        foreach ($this->surowce as $surowiec) {
-            $iloscWGramach = 0;
-            $ilosc = $surowiec->pivot->ilosc;
+        try {
+            $koszt = 0;
+            $sumaProcentowa = 0;
             
-            // Przeliczenie kosztu i ilości w gramach w zależności od jednostki miary surowca
-            if ($surowiec->jednostka_miary === 'g') {
-                // Dla gramów: ilość w gramach * cena jednostkowa za gram
-                $koszt += $surowiec->cena_jednostkowa * $ilosc;
+            // Debug log
+            \Illuminate\Support\Facades\Log::info('Obliczanie kosztu dla receptury: ' . $this->id, [
+                'surowce_count' => $this->surowce->count(),
+                'typ_receptury' => $this->typ_receptury?->value
+            ]);
+
+            foreach ($this->surowce as $surowiec) {
+                $iloscWBazowejJednostce = 0;
+                $ilosc = (float) ($surowiec->pivot->ilosc ?? 0);
                 
-                // Dla sumy procentowej: ilość w gramach / 1000 * 100%
-                $iloscWGramach = $ilosc;
-            } elseif ($surowiec->jednostka_miary === 'kg') {
-                // Dla kilogramów: ilość w kg * cena jednostkowa za kg
-                $koszt += $surowiec->cena_jednostkowa * $ilosc;
+                // Pobierz jednostkę miary
+                $jednostkaMiary = $surowiec->jednostka_miary;
+                if ($jednostkaMiary instanceof \App\Enums\JednostkaMiary) {
+                    $jednostkaMiary = $jednostkaMiary->value;
+                }
                 
-                // Dla sumy procentowej: ilość w kg * 1000 / 1000 * 100%
-                $iloscWGramach = $ilosc * 1000;
-            } elseif ($surowiec->jednostka_miary === 'ml') {
-                // Dla mililitrów: zakładamy, że 1ml = 1g dla uproszczenia
-                $koszt += $surowiec->cena_jednostkowa * $ilosc;
+                // Debug dla każdego surowca
+                \Illuminate\Support\Facades\Log::info('Przetwarzanie surowca', [
+                    'nazwa' => $surowiec->nazwa,
+                    'ilosc' => $ilosc,
+                    'jednostka' => $jednostkaMiary,
+                    'cena' => $surowiec->cena_jednostkowa
+                ]);
                 
-                // Dla sumy procentowej: ilość w ml / 1000 * 100%
-                $iloscWGramach = $ilosc;
-            } elseif ($surowiec->jednostka_miary === 'l') {
-                // Dla litrów: zakładamy, że 1l = 1kg dla uproszczenia
-                $koszt += $surowiec->cena_jednostkowa * $ilosc;
+                // Przeliczenie kosztu i ilości w zależności od jednostki miary surowca
+                if ($jednostkaMiary === 'g') {
+                    $koszt += $surowiec->cena_jednostkowa * $ilosc;
+                    $iloscWBazowejJednostce = $ilosc;
+                } elseif ($jednostkaMiary === 'kg') {
+                    $koszt += $surowiec->cena_jednostkowa * $ilosc;
+                    $iloscWBazowejJednostce = $ilosc * 1000;
+                } elseif ($jednostkaMiary === 'ml') {
+                    $koszt += $surowiec->cena_jednostkowa * $ilosc;
+                    $iloscWBazowejJednostce = $ilosc;
+                } elseif ($jednostkaMiary === 'l') {
+                    $koszt += $surowiec->cena_jednostkowa * $ilosc;
+                    $iloscWBazowejJednostce = $ilosc * 1000;
+                } else {
+                    // Dla innych jednostek (np. sztuk)
+                    $koszt += $surowiec->cena_jednostkowa * $ilosc;
+                    // Nie dodajemy do sumy procentowej, bo nie da się przeliczyć sztuk na gramy/ml
+                }
                 
-                // Dla sumy procentowej: ilość w l * 1000 / 1000 * 100%
-                $iloscWGramach = $ilosc * 1000;
-            } else {
-                // Dla innych jednostek (np. sztuk)
-                $koszt += $surowiec->cena_jednostkowa * $ilosc;
-                // Nie dodajemy do sumy procentowej, bo nie da się przeliczyć sztuk na gramy
+                // Obliczenie procentu - zawsze dla 1000 jednostek bazowych (1kg = 1000g lub 1l = 1000ml)
+                if ($iloscWBazowejJednostce > 0) {
+                    $procent = ($iloscWBazowejJednostce / 1000) * 100;
+                    $sumaProcentowa += $procent;
+                    
+                    \Illuminate\Support\Facades\Log::info('Obliczony procent', [
+                        'surowiec' => $surowiec->nazwa,
+                        'ilosc_bazowa' => $iloscWBazowejJednostce,
+                        'procent' => $procent,
+                        'suma_dotychczas' => $sumaProcentowa
+                    ]);
+                }
+            }
+
+            // Zaokrąglenie do dwóch miejsc po przecinku
+            $sumaProcentowa = round($sumaProcentowa, 2);
+            
+            // Debug końcowy
+            \Illuminate\Support\Facades\Log::info('Wynik obliczeń', [
+                'koszt_calkowity' => $koszt,
+                'suma_procentowa' => $sumaProcentowa
+            ]);
+            
+            // Pobierz aktualne metadane
+            $metaData = [];
+            if ($this->meta !== null) {
+                if (is_array($this->meta)) {
+                    $metaData = $this->meta;
+                } elseif (is_string($this->meta)) {
+                    $metaData = json_decode($this->meta, true) ?: [];
+                }
             }
             
-            // Obliczenie procentu (ilość w gramach / 1000g * 100%)
-            $procent = ($iloscWGramach / 1000) * 100;
-            $sumaProcentowa += $procent;
+            // Zaktualizuj sumę procentową
+            $metaData['suma_procentowa'] = $sumaProcentowa;
+            
+            // Zapisz zaktualizowane metadane i koszt całkowity
+            $this->koszt_calkowity = $koszt;
+            $this->meta = $metaData;
+            $this->save();
+            
+            // Odśwież model, aby mieć aktualne dane
+            $this->refresh();
+            
+            return $koszt;
+            
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Błąd podczas obliczania kosztu receptury: ' . $e->getMessage(), [
+                'receptura_id' => $this->id,
+                'exception' => $e,
+            ]);
+            
+            throw $e;
         }
-
-        // Zaokrąglenie do dwóch miejsc po przecinku, aby uniknąć błędów zaokrąglenia
-        $sumaProcentowa = round($sumaProcentowa, 2);
-        
-        // Pobierz aktualne metadane
-        $metaData = [];
-        if ($this->meta !== null) {
-            if (is_array($this->meta)) {
-                $metaData = $this->meta;
-            } elseif (is_string($this->meta)) {
-                $metaData = json_decode($this->meta, true) ?: [];
-            }
-        }
-        
-        // Zaktualizuj sumę procentową
-        $metaData['suma_procentowa'] = $sumaProcentowa;
-        
-        // Zapisz zaktualizowane metadane i koszt całkowity
-        $this->koszt_calkowity = $koszt;
-        $this->meta = $metaData;
-        $this->save();
-        
-        // Odśwież model, aby mieć aktualne dane
-        $this->refresh();
-        
-        return $koszt;
     }
     
-    // Pomocnicza metoda do pobierania sumy procentowej
     public function getSumaProcentowa()
     {
         $meta = is_array($this->meta) ? $this->meta : (json_decode($this->meta, true) ?: []);
         return $meta['suma_procentowa'] ?? 0;
+    }
+    
+    /**
+     * Zwraca etykietę jednostki dla tego typu receptury
+     */
+    public function getJednostkaLabel(): string
+    {
+        return $this->typ_receptury === TypReceptury::GRAMY ? '1kg' : '1l';
+    }
+    
+    /**
+     * Zwraca surowce zgodne z typem receptury
+     */
+    public function getKompatybilneSurowce()
+    {
+        $query = \App\Models\Surowiec::query();
+        
+        if ($this->typ_receptury === TypReceptury::GRAMY) {
+            // Dla receptur w gramach - pokaż surowce w g, kg
+            $query->whereIn('jednostka_miary', ['g', 'kg']);
+        } elseif ($this->typ_receptury === TypReceptury::MILILITRY) {
+            // Dla receptur w mililitrach - pokaż surowce w ml, l
+            $query->whereIn('jednostka_miary', ['ml', 'l']);
+        }
+        
+        return $query->get();
     }
 }

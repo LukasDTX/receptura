@@ -107,27 +107,6 @@ class EditZlecenie extends EditRecord
             //$this->getDeleteAction(), // Opcjonalnie dodaj przycisk usuwania
         ];
     }
-    
-    // Nadanie własnej nazwy przyciskowi "Save"
-    // protected function getSaveFormAction(): \Filament\Actions\Action
-    // {
-    //     return parent::getSaveFormAction()
-    //         ->label('Zapisz zmiany')
-    //         ->icon('heroicon-o-check')
-    //         ->color('success')
-    //         ->disabled(function (array $data): bool {
-    //             // Zablokuj przycisk jeśli ilość została zmieniona ale surowce nie zostały przeliczone
-    //             return isset($data['ilosc_zmieniona']) && 
-    //                    ($data['ilosc_zmieniona'] === true || $data['ilosc_zmieniona'] === 'true');
-    //         })
-    //         ->tooltip(function (array $data): ?string {
-    //             if (isset($data['ilosc_zmieniona']) && 
-    //                 ($data['ilosc_zmieniona'] === true || $data['ilosc_zmieniona'] === 'true')) {
-    //                 return 'Przelicz surowce przed zapisaniem zmian';
-    //             }
-    //             return null;
-    //         });
-    // }
 
     // Nadanie własnej nazwy przyciskowi "Save"
     protected function getSaveFormAction(): Action
