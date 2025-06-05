@@ -206,7 +206,7 @@
                                 <td>{{ $lp++ }}</td>
                                 <td>{{ $surowiec['nazwa'] }}</td>
                                 <td>{{ $surowiec['kod'] }}</td>
-                                <td>{{ number_format($surowiec['ilosc'], 3) }} {{ $surowiec['jednostka'] }}</td>
+                                <td>{{ number_format($surowiec['ilosc']) }} {{ $surowiec['jednostka'] }}</td>
                                 <td>{{ number_format($surowiec['cena_jednostkowa'], 2) }} PLN</td>
                                 <td>{{ number_format($surowiec['koszt'], 2) }} PLN</td>
                             </tr>

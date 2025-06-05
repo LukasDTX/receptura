@@ -8,15 +8,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('surowiec', function (Blueprint $table) {
-            $table->id();
-            $table->string('nazwa');
-            $table->string('kod')->unique();
-            $table->text('opis')->nullable();
-            $table->decimal('cena_jednostkowa', 10, 2)->default(0);
-            $table->string('jednostka_miary')->default('kg');
-            $table->timestamps();
-        });
+Schema::create('surowiec', function (Blueprint $table) {
+    $table->id();
+    $table->string('nazwa');
+    $table->string('kod')->unique();
+    $table->text('opis')->nullable();
+    $table->decimal('cena_jednostkowa', 10, 2)->default(0);
+    $table->enum('jednostka_miary', ['g','ml','kg', 'litr'])->default('g');
+    $table->timestamps();
+});
     }
 
     public function down(): void

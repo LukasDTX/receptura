@@ -10,6 +10,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use App\Enums\JednostkaMiary;
 
 class SurowceRelationManager extends RelationManager
 {
@@ -114,9 +115,15 @@ class SurowceRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('pivot.ilosc')
                     ->label('Ilość')
                     ->formatStateUsing(function ($state, $record) {
-                        // Formatowanie liczby - ukrycie części dziesiętnej jeśli są same zera
+                        // Formatowanie liczby
                         $formatted = is_numeric($state) ? (floor($state) == $state ? (int)$state : $state) : $state;
-                        return $formatted . ' ' . $record->jednostka_miary;
+                        
+                        // Użyj ->value aby otrzymać string z enum
+                        $jednostka = $record->jednostka_miary instanceof \App\Enums\JednostkaMiary 
+                            ? $record->jednostka_miary->value 
+                            : $record->jednostka_miary;
+                            
+                        return $formatted . ' ' . $jednostka;
                     }),
                 Tables\Columns\TextColumn::make('procent')
                     ->label('Procent')
@@ -232,14 +239,8 @@ class SurowceRelationManager extends RelationManager
                             ->label('Cena 1 kg')
                             ->default(0),
                         Forms\Components\Select::make('jednostka_miary')
-                            ->options([
-                                'g' => 'Gram',
-                                'kg' => 'Kilogram',
-                                'ml' => 'Mililitr',
-                                'l' => 'Litr',
-                                'szt' => 'Sztuka',
-                            ])
-                            ->default('g')
+                            ->options(JednostkaMiary::class)
+                            ->default(JednostkaMiary::G)
                             ->required(),
                         Forms\Components\TextInput::make('ilosc')
                             ->label('Ilość do dodania')

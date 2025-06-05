@@ -116,6 +116,9 @@ class ProduktResource extends Resource
                     ->columnSpanFull(),
                 
                 Forms\Components\Section::make('Koszty i ceny')
+                    ->description('Szczegóły kosztów i marży produktu')
+                    ->collapsed() // Sekcja zwinięta domyślnie
+                    ->collapsible() // Możliwość rozwijania/zwijania
                     ->schema([
                         Forms\Components\TextInput::make('koszt_calkowity')
                             ->disabled()
@@ -147,7 +150,11 @@ class ProduktResource extends Resource
                                 
                                 return number_format($marza, 2) . ' PLN (' . number_format($marzaProcentowa, 2) . '%)';
                             }),
-                    ])->columns(3),
+                    ])
+                    ->columns(3)
+                    ->extraAttributes([
+                        'style' => 'background-color: #fefce8; border: 1px solid #fde047; border-radius: 0.5rem;'
+                    ])
             ]);
     }
 
@@ -184,8 +191,17 @@ class ProduktResource extends Resource
                 //
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\EditAction::make()
+                    ->label('Edytuj')
+                    ->icon('heroicon-o-pencil'),
+                Tables\Actions\DeleteAction::make()
+                    ->label('Usuń')
+                    ->icon('heroicon-o-trash')
+                    ->requiresConfirmation()
+                    ->modalHeading('Usuń produkt')
+                    ->modalDescription('Czy na pewno chcesz usunąć ten produkt? Ta akcja jest nieodwracalna.')
+                    ->modalSubmitActionLabel('Usuń')
+                    ->modalCancelActionLabel('Anuluj'),
             ]);
     }
 

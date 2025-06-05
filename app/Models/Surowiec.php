@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\JednostkaMiary; // Dodaj tę linię, jeśli używasz PHP enum
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -11,7 +12,7 @@ class Surowiec extends Model
     use HasFactory;
 
     protected $table = 'surowiec';
-    
+
     protected $fillable = [
         'nazwa',
         'kod',
@@ -20,6 +21,10 @@ class Surowiec extends Model
         'jednostka_miary',
     ];
 
+    protected $casts = [
+        'jednostka_miary' => JednostkaMiary::class, // Jeśli używasz PHP enum (PHP 8.1+)
+        'cena_jednostkowa' => 'decimal:2',
+    ];
 
     public function receptury(): BelongsToMany
     {
@@ -27,7 +32,7 @@ class Surowiec extends Model
                     ->withPivot('ilosc')
                     ->withTimestamps();
     }
-    
+
     // Alias dla zgodności z konwencją Filament
     public function recepturas(): BelongsToMany
     {

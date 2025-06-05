@@ -97,7 +97,6 @@ class RecepturaResource extends Resource
                     ->columnSpanFull(),
             ]);
     }
-
     public static function table(Table $table): Table
     {
         return $table
@@ -109,8 +108,11 @@ class RecepturaResource extends Resource
                     ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('koszt_calkowity')
+                    ->label('Koszt całkowity')
                     ->money('pln')
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->tooltip('Całkowity koszt produkcji produktu'),
                 Tables\Columns\TextColumn::make('surowce_count')
                     ->label('Ilość surowców')
                     ->counts('surowce')
@@ -128,8 +130,17 @@ class RecepturaResource extends Resource
                 //
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\EditAction::make()
+                    ->label('Edytuj')
+                    ->icon('heroicon-o-pencil'),
+                // Tables\Actions\DeleteAction::make()
+                //     ->label('Usuń')
+                //     ->icon('heroicon-o-trash')
+                //     ->requiresConfirmation()
+                //     ->modalHeading('Usuń recepturę')
+                //     ->modalDescription('Czy na pewno chcesz usunąć ten recepturę? Ta akcja jest nieodwracalna.')
+                //     ->modalSubmitActionLabel('Usuń')
+                //     ->modalCancelActionLabel('Anuluj'),
             ]);
     }
 

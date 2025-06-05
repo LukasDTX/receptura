@@ -3,7 +3,6 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ZlecenieResource\Pages;
-use App\Filament\Resources\ZlecenieResource\RelationManagers;
 use App\Models\Zlecenie;
 use App\Models\Produkt;
 use Filament\Forms;
@@ -12,7 +11,6 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
@@ -58,9 +56,9 @@ class ZlecenieResource extends Resource
                         
                         return "ZP/{$rok}/{$miesiac}/{$noweId}";
                     })
-                    ->required() // Zmieniamy na required
-                    ->maxLength(255) // Dodajemy ograniczenie długości
-                    ->unique(ignorable: fn ($record) => $record), // Dodajemy sprawdzanie unikalności
+                    ->required()
+                    ->maxLength(255)
+                    ->unique(ignorable: fn ($record) => $record),
                 
                 Forms\Components\Grid::make()
                     ->schema([
@@ -73,8 +71,11 @@ class ZlecenieResource extends Resource
                             ->preload()
                             ->required()
                             ->reactive()
-                            ->afterStateUpdated(function (Set $set) {
+                            ->afterStateUpdated(function (Set $set, Get $get, $state) {
                                 $set('ilosc', 1);
+                                $set('ilosc_zmieniona', false);
+                                $set('surowce_przeliczone', false);
+                                session()->forget('temp_surowce_potrzebne');
                             }),
                             
                         Forms\Components\TextInput::make('ilosc')
@@ -83,7 +84,175 @@ class ZlecenieResource extends Resource
                             ->integer()
                             ->minValue(1)
                             ->default(1)
-                            ->reactive(),
+                            ->reactive()
+                            ->afterStateUpdated(function (Set $set, Get $get, $state, $old) {
+                                if ($old !== null && $old != $state) {
+                                    $set('ilosc_zmieniona', true);
+                                    $set('surowce_przeliczone', false); // Reset po zmianie ilości
+                                }
+                            })
+                            ->suffixAction(
+                                Forms\Components\Actions\Action::make('przelicz_surowce')
+                                    ->label('')
+                                    ->tooltip(function (Get $get) {
+                                        $iloscZmieniona = $get('ilosc_zmieniona');
+                                        if ($iloscZmieniona === true || $iloscZmieniona === 'true') {
+                                            return 'Przelicz surowce (ilość została zmieniona)';
+                                        }
+                                        return 'Przelicz surowce';
+                                    })
+                                    ->icon('heroicon-o-calculator')
+                                    ->color(function (Get $get) {
+                                        $iloscZmieniona = $get('ilosc_zmieniona');
+                                        if ($iloscZmieniona === true || $iloscZmieniona === 'true') {
+                                            return 'danger';
+                                        }
+                                        return 'warning';
+                                    })
+                                    ->visible(fn (Get $get) => $get('produkt_id') !== null)
+                                    ->action(function (Set $set, Get $get, $record, $livewire) {
+                                        $produktId = $get('produkt_id');
+                                        $ilosc = $get('ilosc');
+                                        
+                                        if ($ilosc === null || $ilosc === '' || !is_numeric($ilosc)) {
+                                            \Filament\Notifications\Notification::make()
+                                                ->title('Błąd')
+                                                ->body('Podaj prawidłową ilość produktów.')
+                                                ->danger()
+                                                ->send();
+                                            return;
+                                        }
+                                        
+                                        $ilosc = (int) $ilosc;
+                                        
+                                        if ($ilosc <= 0) {
+                                            \Filament\Notifications\Notification::make()
+                                                ->title('Błąd')
+                                                ->body('Ilość musi być większa od 0.')
+                                                ->danger()
+                                                ->send();
+                                            return;
+                                        }
+                                        
+                                        if (!$produktId) {
+                                            \Filament\Notifications\Notification::make()
+                                                ->title('Błąd')
+                                                ->body('Wybierz produkt przed przeliczeniem surowców.')
+                                                ->danger()
+                                                ->send();
+                                            return;
+                                        }
+                                        
+                                        $produkt = \App\Models\Produkt::with(['receptura.surowce', 'opakowanie'])->find($produktId);
+                                        
+                                        if (!$produkt || !$produkt->receptura) {
+                                            \Filament\Notifications\Notification::make()
+                                                ->title('Błąd')
+                                                ->body('Produkt nie ma przypisanej receptury.')
+                                                ->danger()
+                                                ->send();
+                                            return;
+                                        }
+                                        
+                                        $surowcePotrzebne = [];
+                                        
+                                        // Oblicz surowce z receptury
+                                        foreach ($produkt->receptura->surowce as $surowiec) {
+                                            $iloscNaKgReceptury = (float) ($surowiec->pivot->ilosc ?? 0);
+                                            $kgRecepturyNaOpakowanie = (float) ($produkt->opakowanie->pojemnosc ?? 0) / 1000;
+                                            $gramySurowcaNaOpakowanie = $iloscNaKgReceptury * $kgRecepturyNaOpakowanie;
+                                            $gramySurowcaNaZlecenie = $gramySurowcaNaOpakowanie * $ilosc;
+                                            
+                                            $cenaSurowca = (float) ($surowiec->cena 
+                                                ?? $surowiec->cena_jednostkowa 
+                                                ?? $surowiec->cena_za_kg 
+                                                ?? $surowiec->pivot->cena 
+                                                ?? $surowiec->pivot->cena_jednostkowa 
+                                                ?? 0);
+                                            
+                                            if ($cenaSurowca == 0) {
+                                                $cenySurowcow = [
+                                                    'kolagen rybi' => 0.050,
+                                                    'proszek ananas' => 0.030,
+                                                    'vit d' => 0.200,
+                                                    'witamina d' => 0.200,
+                                                    'kolagen' => 0.050,
+                                                    'ananas' => 0.030,
+                                                ];
+                                                
+                                                $nazwaNormalizowana = strtolower($surowiec->nazwa ?? '');
+                                                foreach ($cenySurowcow as $nazwa => $cena) {
+                                                    if (str_contains($nazwaNormalizowana, $nazwa)) {
+                                                        $cenaSurowca = (float) $cena;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            
+                                            $jednostka = $surowiec->jednostka ?? $surowiec->jednostka_miary ?? 'g';
+                                            $kostSurowca = $gramySurowcaNaZlecenie * $cenaSurowca;
+                                            
+                                            $surowcePotrzebne[] = [
+                                                'id' => $surowiec->id,
+                                                'surowiec_id' => $surowiec->id,
+                                                'nazwa' => $surowiec->nazwa ?? 'Nieznany surowiec',
+                                                'kod' => $surowiec->kod ?? 'SR-' . $surowiec->id,
+                                                'ilosc' => $gramySurowcaNaZlecenie,
+                                                'jednostka' => $jednostka,
+                                                'cena_jednostkowa' => $cenaSurowca,
+                                                'koszt' => $kostSurowca,
+                                            ];
+                                        }
+                                        
+                                        // Dodaj opakowania do surowców
+                                        if ($produkt->opakowanie) {
+                                            $cenaOpakowania = (float) ($produkt->opakowanie->cena ?? 0);
+                                            
+                                            $surowcePotrzebne[] = [
+                                                'id' => 'opakowanie_' . $produkt->opakowanie->id,
+                                                'surowiec_id' => 'opakowanie_' . $produkt->opakowanie->id,
+                                                'nazwa' => $produkt->opakowanie->nazwa ?? 'Nieznane opakowanie',
+                                                'kod' => $produkt->opakowanie->kod ?? 'OP-' . $produkt->opakowanie->id,
+                                                'ilosc' => $ilosc,
+                                                'jednostka' => 'szt',
+                                                'cena_jednostkowa' => $cenaOpakowania,
+                                                'koszt' => $ilosc * $cenaOpakowania,
+                                            ];
+                                        }
+                                        
+                                        if ($record) {
+                                            $record->update([
+                                                'surowce_potrzebne' => $surowcePotrzebne,
+                                                'ilosc' => $ilosc,
+                                            ]);
+                                            
+                                            \Filament\Notifications\Notification::make()
+                                                ->title('Sukces')
+                                                ->body('Surowce zostały przeliczone i zapisane.')
+                                                ->success()
+                                                ->send();
+                                            
+                                            redirect(request()->header('Referer'));
+                                        } else {
+                                            session(['temp_surowce_potrzebne' => $surowcePotrzebne]);
+                                            
+                                            $set('surowce_przeliczone', true);
+                                            
+                                            \Filament\Notifications\Notification::make()
+                                                ->title('Sukces')
+                                                ->body('Surowce zostały przeliczone. Teraz możesz zapisać zlecenie.')
+                                                ->success()
+                                                ->send();
+                                        }
+                                        
+                                        $set('ilosc_zmieniona', false);
+                                    })
+                                    ->requiresConfirmation()
+                                    ->modalHeading('Przelicz surowce')
+                                    ->modalDescription('Czy na pewno chcesz przeliczyć surowce dla aktualnej ilości produktów?')
+                                    ->modalSubmitActionLabel('Przelicz')
+                                    ->modalCancelActionLabel('Anuluj')
+                            ),
                         
                         Forms\Components\DatePicker::make('data_zlecenia')
                             ->label('Data zlecenia')
@@ -111,68 +280,83 @@ class ZlecenieResource extends Resource
                 Forms\Components\Textarea::make('uwagi')
                     ->label('Uwagi')
                     ->columnSpanFull(),
-                
-                Forms\Components\Placeholder::make('info_produkt')
-                    ->label('Informacje o produkcie')
-                    ->content(function (Get $get) {
+
+                // Status indicator
+                Forms\Components\Placeholder::make('status_indicator')
+                    ->label('')
+                    ->content(function ($record, Get $get) {
+                        if ($record) return '';
+                        
                         $produktId = $get('produkt_id');
+                        $ilosc = $get('ilosc');
+                        $surowcePreeliczone = $get('surowce_przeliczone');
+                        $tempSurowce = session('temp_surowce_potrzebne');
+                        
                         if (!$produktId) {
-                            return 'Wybierz produkt, aby zobaczyć szczegóły.';
+                            return new \Illuminate\Support\HtmlString(
+                                '<div style="padding: 8px 12px; background-color: #f9fafb; border: 1px solid #d1d5db; border-radius: 6px; color: #374151;">
+                                    ℹ️ Wybierz produkt aby rozpocząć
+                                </div>'
+                            );
                         }
                         
-                        $produkt = Produkt::with(['receptura', 'opakowanie'])->find($produktId);
-                        if (!$produkt) {
-                            return 'Nie znaleziono produktu.';
+                        if (!$ilosc || $ilosc <= 0) {
+                            return new \Illuminate\Support\HtmlString(
+                                '<div style="padding: 8px 12px; background-color: #f9fafb; border: 1px solid #d1d5db; border-radius: 6px; color: #374151;">
+                                    ℹ️ Ustaw ilość produktów
+                                </div>'
+                            );
                         }
                         
-                        $info = "Nazwa: {$produkt->nazwa}<br>";
-                        $info .= "Kod: {$produkt->kod}<br>";
-                        
-                        if ($produkt->receptura) {
-                            $info .= "Receptura: {$produkt->receptura->nazwa}<br>";
-                            $info .= "Koszt receptury: " . number_format($produkt->receptura->koszt_calkowity, 2) . " PLN<br>";
+                        if (($surowcePreeliczone === true || $surowcePreeliczone === 'true') && !empty($tempSurowce)) {
+                            return new \Illuminate\Support\HtmlString(
+                                '<div style="padding: 8px 12px; background-color: #d1fae5; border: 1px solid #10b981; border-radius: 6px; color: #065f46;">
+                                    ✅ Gotowe do zapisu
+                                </div>'
+                            );
+                        } else {
+                            return new \Illuminate\Support\HtmlString(
+                                '<div style="padding: 8px 12px; background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; color: #92400e;">
+                                    ⏳ Kliknij przycisk kalkulatora przy polu "Ilość" aby przeliczyć surowce
+                                </div>'
+                            );
                         }
-                        
-                        if ($produkt->opakowanie) {
-                            $info .= "Opakowanie: {$produkt->opakowanie->nazwa}<br>";
-                            $info .= "Pojemność: " . number_format($produkt->opakowanie->pojemnosc, 0) . " g<br>";
-                        }
-                        
-                        $info .= "Koszt jednostkowy: " . number_format($produkt->koszt_calkowity, 2) . " PLN<br>";
-                        $info .= "Cena sprzedaży: " . number_format($produkt->cena_sprzedazy, 2) . " PLN<br>";
-                        
-                        $marza = $produkt->cena_sprzedazy - $produkt->koszt_calkowity;
-                        $marzaProcent = ($produkt->koszt_calkowity > 0) ? (($marza / $produkt->koszt_calkowity) * 100) : 0;
-                        $info .= "Marża: " . number_format($marza, 2) . " PLN (" . number_format($marzaProcent, 2) . "%)";
-                        
-                        return new \Illuminate\Support\HtmlString($info);
                     })
+                    ->reactive()
+                    ->live()
                     ->columnSpanFull(),
-                
+
+                // Sekcja surowców
                 Forms\Components\Section::make('Surowce potrzebne do realizacji zlecenia')
-                    ->description('Poniżej jest lista surowców potrzebnych do realizacji zlecenia. Tabela jest wypełniana automatycznie po zapisaniu zlecenia.')
+                    ->description('Lista surowców potrzebnych do realizacji zlecenia.')
                     ->schema([
                         Forms\Components\Placeholder::make('surowce_info')
                             ->label('')
-                            ->content(function ($record) {
-                                if (!$record || !$record->surowce_potrzebne) {
-                                    return 'Lista surowców zostanie wygenerowana automatycznie po zapisaniu zlecenia.';
+                            ->content(function ($record, Get $get) {
+                                $surowce = null;
+                                if (!$record) {
+                                    $surowce = session('temp_surowce_potrzebne');
+                                } else {
+                                    $freshRecord = \App\Models\Zlecenie::find($record->id);
+                                    $surowce = $freshRecord ? $freshRecord->surowce_potrzebne : $record->surowce_potrzebne;
                                 }
                                 
-                                $surowce = $record->surowce_potrzebne;
-                                
-                                if (empty($surowce)) {
-                                    return 'Brak danych o potrzebnych surowcach. Upewnij się, że produkt ma recepturę i opakowanie.';
+                                if (!$surowce || empty($surowce)) {
+                                    return '<div style="padding: 20px; text-align: center; color: #6b7280;">
+                                            <p>Lista surowców zostanie wygenerowana po przeliczeniu.</p>
+                                            <p><small>Wybierz produkt, ustaw ilość i kliknij przycisk kalkulatora przy polu "Ilość".</small></p>
+                                            </div>';
                                 }
                                 
-                                $html = '<table class="w-full text-left border-collapse">';
+                                $html = '<div style="overflow-x: auto;">';
+                                $html .= '<table class="w-full text-left border-collapse border border-gray-300">';
                                 $html .= '<thead>';
-                                $html .= '<tr>';
-                                $html .= '<th class="py-2 px-4 bg-gray-100 font-semibold text-gray-700 border-b">Nazwa</th>';
-                                $html .= '<th class="py-2 px-4 bg-gray-100 font-semibold text-gray-700 border-b">Kod</th>';
-                                $html .= '<th class="py-2 px-4 bg-gray-100 font-semibold text-gray-700 border-b">Ilość</th>';
-                                $html .= '<th class="py-2 px-4 bg-gray-100 font-semibold text-gray-700 border-b">Cena jedn.</th>';
-                                $html .= '<th class="py-2 px-4 bg-gray-100 font-semibold text-gray-700 border-b">Koszt</th>';
+                                $html .= '<tr style="background-color: #f9fafb;">';
+                                $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Nazwa</th>';
+                                $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Kod</th>';
+                                $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Ilość</th>';
+                                $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Cena jedn. (PLN/g)</th>';
+                                $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Koszt</th>';
                                 $html .= '</tr>';
                                 $html .= '</thead>';
                                 $html .= '<tbody>';
@@ -180,12 +364,17 @@ class ZlecenieResource extends Resource
                                 $suma = 0;
                                 
                                 foreach ($surowce as $surowiec) {
-                                    $html .= '<tr>';
-                                    $html .= '<td class="py-2 px-4 border-b">' . $surowiec['nazwa'] . '</td>';
-                                    $html .= '<td class="py-2 px-4 border-b">' . $surowiec['kod'] . '</td>';
-                                    $html .= '<td class="py-2 px-4 border-b">' . number_format($surowiec['ilosc'], 3) . ' ' . $surowiec['jednostka'] . '</td>';
-                                    $html .= '<td class="py-2 px-4 border-b">' . number_format($surowiec['cena_jednostkowa'], 2) . ' PLN</td>';
-                                    $html .= '<td class="py-2 px-4 border-b">' . number_format($surowiec['koszt'], 2) . ' PLN</td>';
+                                    $html .= '<tr style="border-bottom: 1px solid #e5e7eb;">';
+                                    $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['nazwa']) . '</td>';
+                                    $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['kod']) . '</td>';
+                                    
+                                    $iloscFormatowana = $surowiec['ilosc'] < 1 
+                                        ? number_format($surowiec['ilosc']) 
+                                        : number_format($surowiec['ilosc'], $surowiec['ilosc'] == intval($surowiec['ilosc']) ? 0 : 2);
+                                    
+                                    $html .= '<td class="py-2 px-4">' . $iloscFormatowana . ' ' . htmlspecialchars($surowiec['jednostka']) . '</td>';
+                                    $html .= '<td class="py-2 px-4">' . number_format($surowiec['cena_jednostkowa']) . ' PLN</td>';
+                                    $html .= '<td class="py-2 px-4 font-semibold">' . number_format($surowiec['koszt'], 2) . ' PLN</td>';
                                     $html .= '</tr>';
                                     
                                     $suma += $surowiec['koszt'];
@@ -193,19 +382,161 @@ class ZlecenieResource extends Resource
                                 
                                 $html .= '</tbody>';
                                 $html .= '<tfoot>';
-                                $html .= '<tr>';
-                                $html .= '<td colspan="4" class="py-2 px-4 text-right font-bold">Suma:</td>';
-                                $html .= '<td class="py-2 px-4 font-bold">' . number_format($suma, 2) . ' PLN</td>';
+                                $html .= '<tr style="background-color: #f3f4f6; font-weight: bold;">';
+                                $html .= '<td colspan="4" class="py-3 px-4 text-right">SUMA KOSZTÓW:</td>';
+                                $html .= '<td class="py-3 px-4 text-lg">' . number_format($suma, 2) . ' PLN</td>';
                                 $html .= '</tr>';
                                 $html .= '</tfoot>';
                                 $html .= '</table>';
+                                $html .= '</div>';
                                 
                                 return new \Illuminate\Support\HtmlString($html);
-                            }),
+                            })
+                            ->reactive()
+                            ->live(),
                     ])
-                    ->collapsed(fn ($record) => $record === null)
+                    ->collapsed(function ($record, Get $get) {
+                        if (!$record) {
+                            $surowcePreeliczone = $get('surowce_przeliczone');
+                            $tempSurowce = session('temp_surowce_potrzebne');
+                            return !($surowcePreeliczone && !empty($tempSurowce));
+                        }
+                        return false;
+                    })
                     ->collapsible()
+                    ->visible(function ($record, Get $get) {
+                        if ($record) {
+                            return true;
+                        }
+                        
+                        $surowcePreeliczone = $get('surowce_przeliczone');
+                        $tempSurowce = session('temp_surowce_potrzebne');
+                        
+                        return ($surowcePreeliczone === true || $surowcePreeliczone === 'true') && 
+                               !empty($tempSurowce) && 
+                               is_array($tempSurowce) && 
+                               count($tempSurowce) > 0;
+                    })
                     ->columnSpanFull(),
+
+                // Informacje o produkcie
+                Forms\Components\Section::make('Informacje o produkcie')
+                    ->description('Szczegóły wybranego produktu i obliczenia kosztów')
+                    ->collapsed()
+                    ->collapsible()
+                    ->schema([
+                        Forms\Components\Grid::make(2)
+                            ->schema([
+                                Forms\Components\Placeholder::make('info_produkt_podstawowe')
+                                    ->label('Podstawowe informacje')
+                                    ->content(function (Get $get) {
+                                        $produktId = $get('produkt_id');
+                                        if (!$produktId) {
+                                            return 'Wybierz produkt, aby zobaczyć szczegóły.';
+                                        }
+                                        
+                                        $produkt = Produkt::with(['receptura', 'opakowanie'])->find($produktId);
+                                        if (!$produkt) {
+                                            return 'Nie znaleziono produktu.';
+                                        }
+                                        
+                                        $info = "<strong>Nazwa:</strong> {$produkt->nazwa}<br>";
+                                        $info .= "<strong>Kod:</strong> {$produkt->kod}<br>";
+                                        
+                                        if ($produkt->receptura) {
+                                            $info .= "<strong>Receptura:</strong> {$produkt->receptura->nazwa}<br>";
+                                            $info .= "<strong>Koszt receptury za kg:</strong> " . number_format($produkt->receptura->koszt_calkowity, 2) . " PLN/kg<br>";
+                                        }
+                                        
+                                        if ($produkt->opakowanie) {
+                                            $info .= "<strong>Opakowanie:</strong> {$produkt->opakowanie->nazwa}<br>";
+                                            $info .= "<strong>Pojemność:</strong> " . number_format($produkt->opakowanie->pojemnosc, 0) . " g<br>";
+                                            $info .= "<strong>Koszt opakowania:</strong> " . number_format($produkt->opakowanie->cena ?? 0, 2) . " PLN<br>";
+                                        }
+                                        
+                                        return new \Illuminate\Support\HtmlString($info);
+                                    }),
+                                
+                                Forms\Components\Placeholder::make('obliczenia_kosztow')
+                                    ->label('Obliczenia kosztów')
+                                    ->content(function (Get $get) {
+                                        $produktId = $get('produkt_id');
+                                        $ilosc = $get('ilosc');
+                                        
+                                        if ($ilosc === null || $ilosc === '' || !is_numeric($ilosc)) {
+                                            $ilosc = 0;
+                                        } else {
+                                            $ilosc = (int) $ilosc;
+                                        }
+                                        
+                                        if (!$produktId) {
+                                            return 'Wybierz produkt, aby zobaczyć obliczenia.';
+                                        }
+                                        
+                                        if ($ilosc <= 0) {
+                                            return 'Ustaw ilość większą od 0, aby zobaczyć obliczenia.';
+                                        }
+                                        
+                                        $produkt = Produkt::with(['receptura', 'opakowanie'])->find($produktId);
+                                        if (!$produkt) {
+                                            return 'Nie znaleziono produktu.';
+                                        }
+                                        
+                                        $kosztRecepturyZaKg = $produkt->receptura ? (float) $produkt->receptura->koszt_calkowity : 0.0;
+                                        $kosztOpakowania = $produkt->opakowanie ? (float) ($produkt->opakowanie->cena ?? 0) : 0.0;
+                                        $pojemnoscOpakowania = $produkt->opakowanie ? (float) $produkt->opakowanie->pojemnosc : 0.0;
+                                        
+                                        $kosztRecepturyNaOpakowanie = 0.0;
+                                        if ($pojemnoscOpakowania > 0) {
+                                            $kosztRecepturyNaOpakowanie = $kosztRecepturyZaKg * ($pojemnoscOpakowania / 1000);
+                                        }
+                                        
+                                        $kosztCalkowity1Sztuki = $kosztRecepturyNaOpakowanie + $kosztOpakowania;
+                                        $kosztCalkowitiegoZlecenia = $kosztCalkowity1Sztuki * $ilosc;
+                                        
+                                        $info = "<strong>Na 1 sztukę:</strong><br>";
+                                        $info .= "Koszt receptury: " . number_format($kosztRecepturyNaOpakowanie, 2) . " PLN<br>";
+                                        $info .= "Koszt opakowania: " . number_format($kosztOpakowania, 2) . " PLN<br>";
+                                        $info .= "<strong>Koszt całkowity:</strong> " . number_format($kosztCalkowity1Sztuki, 2) . " PLN<br>";
+                                        
+                                        $info .= "<hr style='margin: 8px 0; border: 1px solid #e5e7eb;'>";
+                                        $info .= "<strong>Na {$ilosc} szt.:</strong><br>";
+                                        $info .= "Koszt całkowity zlecenia: " . number_format($kosztCalkowitiegoZlecenia, 2) . " PLN<br>";
+                                        
+                                        if ($produkt->cena_sprzedazy > 0) {
+                                            $wartoscSprzedazy = (float) $produkt->cena_sprzedazy * $ilosc;
+                                            $marza = $wartoscSprzedazy - $kosztCalkowitiegoZlecenia;
+                                            $marzaProcent = ($kosztCalkowitiegoZlecenia > 0) ? (($marza / $kosztCalkowitiegoZlecenia) * 100) : 0;
+                                            
+                                            $info .= "Wartość sprzedaży: " . number_format($wartoscSprzedazy, 2) . " PLN<br>";
+                                            $info .= "Marża: " . number_format($marza, 2) . " PLN (" . number_format($marzaProcent, 2) . "%)";
+                                        }
+                                        
+                                        return new \Illuminate\Support\HtmlString($info);
+                                    }),
+                            ]),
+                    ])
+                    ->extraAttributes([
+                        'style' => 'background-color: #fefce8; border: 1px solid #fde047; border-radius: 0.5rem;'
+                    ])
+                    ->visible(function ($record, Get $get) {
+                        if ($record) {
+                            return true;
+                        }
+                        
+                        $produktId = $get('produkt_id');
+                        return !empty($produktId);
+                    })
+                    ->columnSpanFull(),
+
+                // Ukryte pola
+                Forms\Components\Hidden::make('ilosc_zmieniona')
+                    ->default(false)
+                    ->reactive(),
+
+                Forms\Components\Hidden::make('surowce_przeliczone')
+                    ->default(false)
+                    ->reactive(),
             ]);
     }
 
@@ -273,7 +604,9 @@ class ZlecenieResource extends Resource
                     ->label('Data zlecenia'),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()
+                    ->label('Edytuj')
+                    ->icon('heroicon-o-pencil'),
                 Tables\Actions\Action::make('drukuj')
                     ->label('Drukuj')
                     ->icon('heroicon-o-printer')
@@ -305,15 +638,13 @@ class ZlecenieResource extends Resource
                         }),
                 ]),
             ]);
-    }
-    
+    } 
     public static function getRelations(): array
     {
         return [
             //
         ];
     }
-    
     public static function getPages(): array
     {
         return [

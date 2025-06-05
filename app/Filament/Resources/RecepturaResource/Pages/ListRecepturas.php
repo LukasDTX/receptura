@@ -13,7 +13,11 @@ class ListRecepturas extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            Actions\CreateAction::make(),
+        Actions\CreateAction::make()
+            ->label('Dodaj recepture')
+            ->icon('heroicon-o-plus')
+            ->color('success') // zielony kolor
+            ->size('lg'), // większy rozmiar
         ];
     }
 }

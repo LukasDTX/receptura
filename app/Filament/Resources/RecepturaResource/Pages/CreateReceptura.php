@@ -44,4 +44,29 @@ class CreateReceptura extends CreateRecord
     {
         return $this->getResource()::getUrl('edit', ['record' => $this->record]);
     }
+        // Opcjonalnie: dostosowanie akcji formularza
+    protected function getFormActions(): array
+    {
+        return [
+            $this->getCreateFormAction(),
+            $this->getCancelFormAction(),
+        ];
+    }
+    // Nadanie własnej nazwy przyciskowi "Create"
+    protected function getCreateFormAction(): \Filament\Actions\Action
+    {
+        return parent::getCreateFormAction()
+            ->label('Zapisz recepturę')
+            ->icon('heroicon-o-check')
+            ->color('success');
+    }
+    
+    // Nadanie własnej nazwy przyciskowi "Cancel"
+    protected function getCancelFormAction(): \Filament\Actions\Action
+    {
+        return parent::getCancelFormAction()
+            ->label('Anuluj')
+            ->icon('heroicon-o-x-mark')
+            ->color('danger');
+    }
 }

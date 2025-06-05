@@ -78,14 +78,20 @@ class ZleceniaStats extends BaseWidget
             }
             
             foreach ($zlecenie->surowce_potrzebne as $surowiec) {
-                $id = $surowiec['surowiec_id'];
+                // Poprawka: sprawdź czy klucz istnieje, użyj 'id' zamiast 'surowiec_id'
+                $id = $surowiec['id'] ?? $surowiec['surowiec_id'] ?? null;
+                
+                if ($id === null) {
+                    // Jeśli brak ID, pomiń ten surowiec lub użyj nazwy jako klucza
+                    $id = $surowiec['nazwa'] ?? 'nieznany_' . rand(1000, 9999);
+                }
                 
                 if (!isset($surowcePotrzebne[$id])) {
                     $surowcePotrzebne[$id] = [
-                        'nazwa' => $surowiec['nazwa'],
-                        'kod' => $surowiec['kod'],
+                        'nazwa' => $surowiec['nazwa'] ?? 'Nieznany surowiec',
+                        'kod' => $surowiec['kod'] ?? '',
                         'ilosc' => 0,
-                        'jednostka' => $surowiec['jednostka'],
+                        'jednostka' => $surowiec['jednostka'] ?? 'szt',
                         'koszt' => 0,
                     ];
                 }
@@ -108,9 +114,9 @@ class ZleceniaStats extends BaseWidget
                     }
                 }
                 
-                // Dodaj ilość i koszt
-                $surowcePotrzebne[$id]['ilosc'] += $surowiec['ilosc'];
-                $surowcePotrzebne[$id]['koszt'] += $surowiec['koszt'];
+                // Dodaj ilość i koszt (z zabezpieczeniami)
+                $surowcePotrzebne[$id]['ilosc'] += $surowiec['ilosc'] ?? 0;
+                $surowcePotrzebne[$id]['koszt'] += $surowiec['koszt'] ?? 0;
             }
         }
         

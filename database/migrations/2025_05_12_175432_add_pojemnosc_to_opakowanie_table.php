@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::table('opakowanie', function (Blueprint $table) {
             // Dodanie kolumny pojemnosc typu decimal z 3 miejscami po przecinku
-            $table->decimal('pojemnosc', 10, 3)->default(0)->after('opis')->comment('Pojemność opakowania w gramach');
+            $table->decimal('pojemnosc', 10, 0)->default(0)->after('opis')->comment('Pojemność opakowania w gramach');
         });
     }
 
