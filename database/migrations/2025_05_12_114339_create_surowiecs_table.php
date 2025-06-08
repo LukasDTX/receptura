@@ -11,6 +11,7 @@ return new class extends Migration
 Schema::create('surowiec', function (Blueprint $table) {
     $table->id();
     $table->string('nazwa');
+    $table->string('nazwa_naukowa');
     $table->string('kod')->unique();
     $table->text('opis')->nullable();
     $table->decimal('cena_jednostkowa', 10, 2)->default(0);

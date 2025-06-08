@@ -22,3 +22,8 @@ Route::post('/test-session-data', function () {
         'all_session_keys' => array_keys(session()->all())
     ]);
 })->middleware('web');
+
+// Route dla drukowania zlecenia
+Route::get('/zlecenie/{zlecenie}/drukuj', [ZlecenieController::class, 'drukuj'])
+    ->name('zlecenie.drukuj')
+    ->middleware('auth');

@@ -15,6 +15,7 @@ class Surowiec extends Model
 
     protected $fillable = [
         'nazwa',
+        'nazwa_naukowa',
         'kod',
         'opis',
         'cena_jednostkowa',

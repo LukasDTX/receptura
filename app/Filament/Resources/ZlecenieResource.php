@@ -642,6 +642,53 @@ class ZlecenieResource extends Resource
                     ->icon('heroicon-o-printer')
                     ->url(fn (Zlecenie $record): string => route('zlecenie.drukuj', $record))
                     ->openUrlInNewTab(),
+Tables\Actions\Action::make('utworz_partie')
+                    ->label('Utwórz partię')
+                    ->icon('heroicon-o-cube-transparent')
+                    ->color('success')
+                    ->visible(fn ($record) => $record->status === 'zrealizowane')
+                    ->form([
+                        Forms\Components\TextInput::make('numer_partii')
+                            ->label('Numer partii')
+                            ->default(fn () => \App\Models\Partia::generateNumerPartii())
+                            ->required(),
+                        Forms\Components\TextInput::make('ilosc_wyprodukowana')
+                            ->label('Ilość rzeczywiście wyprodukowana')
+                            ->numeric()
+                            ->required()
+                            ->default(fn ($record) => $record->ilosc),
+                        Forms\Components\DatePicker::make('data_produkcji')
+                            ->label('Data produkcji')
+                            ->required()
+                            ->default(now()),
+                        Forms\Components\DatePicker::make('data_waznosci')
+                            ->label('Data ważności')
+                            ->default(now()->addMonths(12)),
+                        Forms\Components\Textarea::make('uwagi')
+                            ->label('Uwagi dotyczące produkcji'),
+                    ])
+                    ->action(function (array $data, $record) {
+                        try {
+                            $partia = \App\Models\Partia::createFromZlecenie($record, $data);
+                            
+                            \Filament\Notifications\Notification::make()
+                                ->title('Partia utworzona')
+                                ->body("Partia {$partia->numer_partii} została utworzona i dodana do magazynu.")
+                                ->success()
+                                ->send();
+                                
+                        } catch (\Exception $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->title('Błąd podczas tworzenia partii')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    })
+                    ->requiresConfirmation()
+                    ->modalHeading('Utwórz partię produktu')
+                    ->modalDescription('Zostanie utworzona nowa partia i dodana do magazynu.')
+                    ->modalSubmitActionLabel('Utwórz partię'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([

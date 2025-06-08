@@ -38,41 +38,44 @@ public static function form(Form $form): Form
                 Forms\Components\TextInput::make('nazwa')
                     ->required()
                     ->maxLength(255),
-                Forms\Components\TextInput::make('kod')
-                    ->label('Kod receptury')
-                    ->default(function () {
-                        // Kompatybilna wersja dla PostgreSQL i MySQL
-                        try {
-                            // Pobierz wszystkie kody zaczynające się od 'RCP-'
-                            $kody = \App\Models\Receptura::where('kod', 'LIKE', 'RCP-%')
-                                ->pluck('kod')
-                                ->toArray();
-                            
-                            $najwyzszyNumer = 0;
-                            
-                            foreach ($kody as $kod) {
-                                // Wyciągnij numer z kodu (po 'RCP-')
-                                if (preg_match('/^RCP-(\d+)$/', $kod, $matches)) {
-                                    $numer = (int) $matches[1];
-                                    if ($numer > $najwyzszyNumer) {
-                                        $najwyzszyNumer = $numer;
-                                    }
-                                }
-                            }
-                            
-                            $nowyNumer = $najwyzszyNumer + 1;
-                            return 'RCP-' . $nowyNumer;
-                            
-                        } catch (\Exception $e) {
-                            // Fallback - użyj count + 1
-                            $count = \App\Models\Receptura::count();
-                            return 'RCP-' . ($count + 1);
-                        }
-                    })
-                    ->required()
-                    ->unique(ignorable: fn ($record) => $record)
-                    ->readonly()
-                    ->helperText('Kod generowany automatycznie w formacie RCP-numer'),
+Forms\Components\TextInput::make('kod')
+    ->label('Kod receptury')
+    ->default(function () {
+        try {
+            $today = now()->format('Ymd'); // Format: 20250608
+            $prefix = 'RCP-' . $today . '-';
+
+            // Pobierz kody z dzisiejszą datą
+            $kody = \App\Models\Receptura::where('kod', 'like', $prefix . '%')
+                ->pluck('kod')
+                ->toArray();
+
+            $najwyzszyNumer = 0;
+
+            foreach ($kody as $kod) {
+                if (preg_match('/^RCP-' . $today . '-(\d+)$/', $kod, $matches)) {
+                    $numer = (int) $matches[1];
+                    if ($numer > $najwyzszyNumer) {
+                        $najwyzszyNumer = $numer;
+                    }
+                }
+            }
+
+            $nowyNumer = $najwyzszyNumer + 1;
+            return $prefix . $nowyNumer;
+
+        } catch (\Exception $e) {
+            $today = now()->format('Ymd');
+            $prefix = 'RCP-' . $today . '-';
+            $count = \App\Models\Receptura::where('kod', 'like', $prefix . '%')->count();
+            return $prefix . ($count + 1);
+        }
+    })
+    ->required()
+    ->unique(ignorable: fn ($record) => $record)
+    ->readonly()
+    ->helperText('Kod generowany automatycznie w formacie RCP-RRRRMMDD-numer'),
+
                 Forms\Components\Select::make('typ_receptury')
                     ->label('Typ receptury')
                     ->options([

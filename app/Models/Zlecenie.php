@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Zlecenie extends Model
 {
@@ -32,6 +33,11 @@ class Zlecenie extends Model
     public function produkt(): BelongsTo
     {
         return $this->belongsTo(Produkt::class);
+    }
+    
+    public function partie(): HasMany
+    {
+        return $this->hasMany(Partia::class);
     }
     
     /**

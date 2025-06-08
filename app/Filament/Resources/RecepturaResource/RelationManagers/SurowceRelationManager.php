@@ -255,12 +255,12 @@ public function form(Form $form): Form
                         if ($receptura->typ_receptury === \App\Enums\TypReceptury::GRAMY) {
                             $dozwoloneJednostki = [
                                 \App\Enums\JednostkaMiary::G,
-                                \App\Enums\JednostkaMiary::KG,
+                                // \App\Enums\JednostkaMiary::KG,
                             ];
                         } elseif ($receptura->typ_receptury === \App\Enums\TypReceptury::MILILITRY) {
                             $dozwoloneJednostki = [
                                 \App\Enums\JednostkaMiary::ML,
-                                \App\Enums\JednostkaMiary::L,
+                                // \App\Enums\JednostkaMiary::L,
                             ];
                         } else {
                             $dozwoloneJednostki = \App\Enums\JednostkaMiary::cases();
@@ -268,6 +268,10 @@ public function form(Form $form): Form
                         
                         return [
                             Forms\Components\TextInput::make('nazwa')
+                                ->required()
+                                ->maxLength(255),
+                            Forms\Components\TextInput::make('nazwa_naukowa')
+                                ->label('Nazwa naukowa')
                                 ->required()
                                 ->maxLength(255),
                             Forms\Components\TextInput::make('kod')

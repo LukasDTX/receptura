@@ -10,22 +10,24 @@ class SurowiecForm
     public static function make(): array
     {
         return [
-            Forms\Components\TextInput::make('nazwa')->required(),
-            Forms\Components\TextInput::make('kod')
+            Forms\Components\TextInput::make('nazwa')->label('Nazwa')->required(),
+            Forms\Components\TextInput::make('kod')->label('Kod surowca')
                 ->required()
-                ->unique(ignoreRecord: true)
-                ->default(fn () => self::generateKod())
-                ->readonly(),
-            Forms\Components\Textarea::make('opis'),
-            Forms\Components\TextInput::make('cena_jednostkowa')->numeric()->step(0.01),
+                ->unique(ignoreRecord: true),
+                // ->default(fn () => self::generateKod()),
+            Forms\Components\TextInput::make('nazwa_naukowa')
+                ->label('Nazwa naukowa'),
+
+            Forms\Components\TextInput::make('cena_jednostkowa')->label('Cena jednostkowa')->numeric()->step(0.01)->default(1),
             Forms\Components\Select::make('jednostka_miary')
                 ->options(
                     collect(JednostkaMiary::cases())
                         ->mapWithKeys(fn($case) => [$case->value => $case->label()])
                         ->toArray()
                 )
-                ->default(JednostkaMiary::KG->value)
+                ->default(JednostkaMiary::G->value)
                 ->required(),
+            Forms\Components\Textarea::make('opis'),
         ];
     }
     public static function generateKod(): string

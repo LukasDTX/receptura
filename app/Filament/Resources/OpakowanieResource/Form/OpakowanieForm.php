@@ -14,9 +14,9 @@ class OpakowanieForm
                 ->maxLength(255),
             Forms\Components\TextInput::make('kod')
                 ->required()
-                ->unique(ignoreRecord: true)
-                ->default(fn () => self::generateKod())
-                ->readonly(),
+                ->unique(ignoreRecord: true),
+                // ->default(fn () => self::generateKod())
+                // ->readonly(),
             Forms\Components\Textarea::make('opis')
                 ->maxLength(65535)
                 ->columnSpanFull(),
@@ -90,7 +90,7 @@ class OpakowanieForm
                 ->required()
                 ->numeric()
                 ->prefix('PLN')
-                ->default(0),
+                ->default(1),
         ];
     }
     
