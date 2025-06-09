@@ -262,6 +262,7 @@ class ZlecenieResource extends Resource
             'id' => $surowiec->id,
             'surowiec_id' => $surowiec->id,
             'nazwa' => $surowiec->nazwa ?? 'Nieznany surowiec',
+            'nazwa_naukowa' => '('.$surowiec->nazwa_naukowa.')' ?? '',
             'kod' => $surowiec->kod ?? 'SR-' . $surowiec->id,
             'ilosc' => $iloscDoWyswietlenia,
             'jednostka' => $jednostkaDoWyswietlenia,
@@ -286,6 +287,7 @@ if ($opakowanie) {
         'id' => 'opakowanie_' . $opakowanie->id,
         'surowiec_id' => 'opakowanie_' . $opakowanie->id,
         'nazwa' => $opakowanie->nazwa ?? 'Nieznane opakowanie',
+        'nazwa_naukowa' => '',
         'kod' => $opakowanie->kod ?? 'OP-' . $opakowanie->id,
         'ilosc' => $ilosc, // Ta wartość to ilość produktów = ilość opakowań
         'jednostka' => 'szt',
@@ -451,11 +453,12 @@ if ($opakowanie) {
                                 $html .= '</thead>';
                                 $html .= '<tbody>';
                                 
-                                $suma = 0;
-                                
+                                $suma = 0;                
 foreach ($surowce as $surowiec) {
+     // Debugging line to inspect the surowiec structure
+     // Debugging line to inspect the surowiec structure
     $html .= '<tr style="border-bottom: 1px solid #e5e7eb;">';
-    $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['nazwa']) . '(' . htmlspecialchars($surowiec['nazwa']).')</td>';
+    $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['nazwa']) . '' . htmlspecialchars($surowiec['nazwa_naukowa']).'</td>';
     $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['kod']) . '</td>';
     
     // POPRAWIONE FORMATOWANIE ILOŚCI
