@@ -240,15 +240,9 @@ class ZlecenieResource extends Resource
             $jednostka = $jednostka ?? 'g';
         }
         
-        // Konwersja na większe jednostki jeśli wartość przekracza 1000
+        // ZAWSZE używaj jednostek bazowych (g, ml) - bez konwersji na kg/l
         $iloscDoWyswietlenia = $iloscNaZlecenie;
         $jednostkaDoWyswietlenia = $jednostka;
-        
-        if (($jednostka === 'g' && $iloscNaZlecenie >= 1000) || 
-            ($jednostka === 'ml' && $iloscNaZlecenie >= 1000)) {
-            $iloscDoWyswietlenia = $iloscNaZlecenie / 1000;
-            $jednostkaDoWyswietlenia = $jednostka === 'g' ? 'kg' : 'l';
-        }
         
         $kostSurowca = $iloscNaZlecenie * $cenaSurowca;
         
