@@ -455,7 +455,7 @@ if ($opakowanie) {
                                 
 foreach ($surowce as $surowiec) {
     $html .= '<tr style="border-bottom: 1px solid #e5e7eb;">';
-    $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['nazwa']) . '(' . htmlspecialchars($surowiec['nazwa_naukowa']).')</td>';
+    $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['nazwa']) . '(' . htmlspecialchars($surowiec['nazwa']).')</td>';
     $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['kod']) . '</td>';
     
     // POPRAWIONE FORMATOWANIE ILOŚCI
