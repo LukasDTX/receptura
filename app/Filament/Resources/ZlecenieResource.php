@@ -271,20 +271,28 @@ class ZlecenieResource extends Resource
     }
     
     // Dodaj opakowania do surowców
-    if ($opakowanie) {
-        $cenaOpakowania = (float) ($opakowanie->cena ?? 0);
-        
-        $surowcePotrzebne[] = [
-            'id' => 'opakowanie_' . $opakowanie->id,
-            'surowiec_id' => 'opakowanie_' . $opakowanie->id,
-            'nazwa' => $opakowanie->nazwa ?? 'Nieznane opakowanie',
-            'kod' => $opakowanie->kod ?? 'OP-' . $opakowanie->id,
-            'ilosc' => $ilosc,
-            'jednostka' => 'szt',
-            'cena_jednostkowa' => $cenaOpakowania,
-            'koszt' => $ilosc * $cenaOpakowania,
-        ];
-    }
+if ($opakowanie) {
+    $cenaOpakowania = (float) ($opakowanie->cena ?? 0);
+    
+    // DEBUG - sprawdź wartości
+    \Illuminate\Support\Facades\Log::info('Obliczenie opakowania', [
+        'nazwa_opakowania' => $opakowanie->nazwa,
+        'ilosc_produktow' => $ilosc,
+        'cena_opakowania' => $cenaOpakowania,
+        'koszt_calkowity_opakowania' => $ilosc * $cenaOpakowania
+    ]);
+    
+    $surowcePotrzebne[] = [
+        'id' => 'opakowanie_' . $opakowanie->id,
+        'surowiec_id' => 'opakowanie_' . $opakowanie->id,
+        'nazwa' => $opakowanie->nazwa ?? 'Nieznane opakowanie',
+        'kod' => $opakowanie->kod ?? 'OP-' . $opakowanie->id,
+        'ilosc' => $ilosc, // Ta wartość to ilość produktów = ilość opakowań
+        'jednostka' => 'szt',
+        'cena_jednostkowa' => $cenaOpakowania,
+        'koszt' => $ilosc * $cenaOpakowania,
+    ];
+}
     
     // Debug - sprawdź czy są surowce
     \Illuminate\Support\Facades\Log::info('Obliczone surowce', [
