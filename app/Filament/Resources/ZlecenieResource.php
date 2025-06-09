@@ -460,25 +460,32 @@ foreach ($surowce as $surowiec) {
     
     // POPRAWIONE FORMATOWANIE ILOŚCI
     $ilosc = (float) $surowiec['ilosc'];
-    
-    if ($ilosc < 0.001) {
-        // Bardzo małe wartości - pokaż z dokładnością do 6 miejsc
-        $iloscFormatowana = number_format($ilosc, 6);
-    } elseif ($ilosc < 1) {
-        // Małe wartości - pokaż z dokładnością do 3 miejsc
-        $iloscFormatowana = number_format($ilosc, 3);
-    } elseif ($ilosc == intval($ilosc)) {
-        // Liczby całkowite - bez miejsc po przecinku
-        $iloscFormatowana = number_format($ilosc, 0);
+                                    $jednostka = $surowiec['jednostka'] ?? '';
+                                
+    // Specjalne formatowanie dla sztuk (opakowania)
+    if ($jednostka === 'szt') {
+        $iloscFormatowana = number_format($ilosc, 0, ',', ' '); // Format: 1 000 szt
     } else {
-        // Inne wartości - 1 miejsce po przecinku
-        $iloscFormatowana = number_format($ilosc, 1);
-    }
+        // Formatowanie dla surowców (g, ml, kg, l)
+        if ($ilosc < 0.001) {
+            // Bardzo małe wartości - pokaż z dokładnością do 6 miejsc
+            $iloscFormatowana = number_format($ilosc, 6, ',', '');
+        } elseif ($ilosc < 1) {
+            // Małe wartości - pokaż z dokładnością do 3 miejsc
+            $iloscFormatowana = number_format($ilosc, 3, ',', '');
+        } elseif ($ilosc == intval($ilosc)) {
+            // Liczby całkowite - bez miejsc po przecinku
+            $iloscFormatowana = number_format($ilosc, 0, ',', '');
+        } else {
+            // Inne wartości - 1 miejsce po przecinku
+            $iloscFormatowana = number_format($ilosc, 1, ',', '');
+        }
+    
     
     // Usuń zbędne zera z końca (opcjonalnie)
     $iloscFormatowana = rtrim($iloscFormatowana, '0');
     $iloscFormatowana = rtrim($iloscFormatowana, '.');
-    
+    }
     $html .= '<td class="py-2 px-4">' . $iloscFormatowana . ' ' . htmlspecialchars($surowiec['jednostka']) . '</td>';
     $html .= '<td class="py-2 px-4">' . number_format($surowiec['cena_jednostkowa'], 3) . ' PLN</td>';
     $html .= '<td class="py-2 px-4 font-semibold">' . number_format($surowiec['koszt'], 2) . ' PLN</td>';
