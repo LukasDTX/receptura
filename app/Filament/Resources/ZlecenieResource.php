@@ -463,7 +463,7 @@ foreach ($surowce as $surowiec) {
                                     $jednostka = $surowiec['jednostka'] ?? '';
                                 
     // Specjalne formatowanie dla sztuk (opakowania)
-    if ($jednostka === 'szt') {
+    if ($jednostka === 'szt' || $jednostka === 'ml') {
         $iloscFormatowana = number_format($ilosc, 0, ',', ' '); // Format: 1 000 szt
     } else {
         // Formatowanie dla surowców (g, ml, kg, l)
