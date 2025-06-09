@@ -41,7 +41,7 @@ class ProduktResource extends Resource
                     ->maxLength(65535)
                     ->columnSpanFull(),
                 
-Forms\Components\Section::make('Komponenty produktu')
+                Forms\Components\Section::make('Komponenty produktu')
                     ->description('Wybierz recepturę (półprodukt) i opakowanie')
                     ->schema([
                         Select::make('receptura_id')
@@ -141,6 +141,44 @@ Forms\Components\Section::make('Komponenty produktu')
                                 return $info;
                             }),
                     ])->columns(2),
+                
+                // NOWE POLE - Okres ważności
+                Forms\Components\Section::make('Informacje o produkcie')
+                    ->description('Dodatkowe informacje o produkcie')
+                    ->schema([
+                        Forms\Components\Select::make('okres_waznosci')
+                            ->label('Okres ważności')
+                            ->options([
+                                '12M' => '12 miesięcy',
+                                '24M' => '24 miesiące', 
+                                '36M' => '36 miesięcy',
+                            ])
+                            ->default('12M')
+                            ->required()
+                            ->helperText('Okres przydatności produktu od daty produkcji')
+                            ->reactive(),
+                            
+                        Forms\Components\Placeholder::make('okres_info')
+                            ->label('Informacja')
+                            ->content(function (Get $get) {
+                                $okres = $get('okres_waznosci');
+                                if (!$okres) return '';
+                                
+                                $miesiace = match($okres) {
+                                    '12M' => 12,
+                                    '24M' => 24,
+                                    '36M' => 36,
+                                    default => 0
+                                };
+                                
+                                return "Produkt będzie ważny przez {$miesiace} miesięcy od daty produkcji";
+                            })
+                            ->extraAttributes(['class' => 'text-sm text-blue-600']),
+                    ])
+                    ->columns(2)
+                    ->extraAttributes([
+                        'style' => 'background-color: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 0.5rem;'
+                    ]),
                 
                 Forms\Components\Placeholder::make('uwaga_pojemnosc')
                     ->label('Uwaga dotycząca pojemności')

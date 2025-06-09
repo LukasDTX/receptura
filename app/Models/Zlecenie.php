@@ -19,6 +19,9 @@ class Zlecenie extends Model
         'ilosc',
         'data_zlecenia',
         'planowana_data_realizacji',
+        'data_produkcji',
+        'data_waznosci',
+        'numer_partii',
         'status',
         'surowce_potrzebne',
         'uwagi',
@@ -27,6 +30,8 @@ class Zlecenie extends Model
     protected $casts = [
         'data_zlecenia' => 'date',
         'planowana_data_realizacji' => 'date',
+        'data_produkcji' => 'date',
+        'data_waznosci' => 'date',
         'surowce_potrzebne' => 'array',
     ];
     
