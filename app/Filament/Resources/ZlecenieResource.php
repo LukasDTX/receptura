@@ -111,172 +111,230 @@ class ZlecenieResource extends Resource
                                     })
                                     ->visible(fn (Get $get) => $get('produkt_id') !== null)
 ->action(function (Set $set, Get $get, $record, $livewire) {
-                                        $produktId = $get('produkt_id');
-                                        $ilosc = $get('ilosc');
-                                        
-                                        // Debug logging
-                                        \Illuminate\Support\Facades\Log::info('Przelicz surowce - start', [
-                                            'produkt_id' => $produktId,
-                                            'ilosc' => $ilosc,
-                                            'record_exists' => $record ? 'tak' : 'nie'
-                                        ]);
-                                        
-                                        if ($ilosc === null || $ilosc === '' || !is_numeric($ilosc)) {
-                                            \Filament\Notifications\Notification::make()
-                                                ->title('Błąd')
-                                                ->body('Podaj prawidłową ilość produktów.')
-                                                ->danger()
-                                                ->send();
-                                            return;
-                                        }
-                                        
-                                        $ilosc = (int) $ilosc;
-                                        
-                                        if ($ilosc <= 0) {
-                                            \Filament\Notifications\Notification::make()
-                                                ->title('Błąd')
-                                                ->body('Ilość musi być większa od 0.')
-                                                ->danger()
-                                                ->send();
-                                            return;
-                                        }
-                                        
-                                        if (!$produktId) {
-                                            \Filament\Notifications\Notification::make()
-                                                ->title('Błąd')
-                                                ->body('Wybierz produkt przed przeliczeniem surowców.')
-                                                ->danger()
-                                                ->send();
-                                            return;
-                                        }
-                                        
-                                        $produkt = \App\Models\Produkt::with(['receptura.surowce', 'opakowanie'])->find($produktId);
-                                        
-                                        if (!$produkt || !$produkt->receptura) {
-                                            \Filament\Notifications\Notification::make()
-                                                ->title('Błąd')
-                                                ->body('Produkt nie ma przypisanej receptury.')
-                                                ->danger()
-                                                ->send();
-                                            return;
-                                        }
-                                        
-                                        $surowcePotrzebne = [];
-                                        
-                                        // Oblicz surowce z receptury
-                                        foreach ($produkt->receptura->surowce as $surowiec) {
-                                            $iloscNaKgReceptury = (float) ($surowiec->pivot->ilosc ?? 0);
-                                            $kgRecepturyNaOpakowanie = (float) ($produkt->opakowanie->pojemnosc ?? 0) / 1000;
-                                            $gramySurowcaNaOpakowanie = $iloscNaKgReceptury * $kgRecepturyNaOpakowanie;
-                                            $gramySurowcaNaZlecenie = $gramySurowcaNaOpakowanie * $ilosc;
-                                            
-                                            $cenaSurowca = (float) ($surowiec->cena 
-                                                ?? $surowiec->cena_jednostkowa 
-                                                ?? $surowiec->cena_za_kg 
-                                                ?? $surowiec->pivot->cena 
-                                                ?? $surowiec->pivot->cena_jednostkowa 
-                                                ?? 0);
-                                            
-                                            if ($cenaSurowca == 0) {
-                                                $cenySurowcow = [
-                                                    'kolagen rybi' => 0.050,
-                                                    'proszek ananas' => 0.030,
-                                                    'vit d' => 0.200,
-                                                    'witamina d' => 0.200,
-                                                    'kolagen' => 0.050,
-                                                    'ananas' => 0.030,
-                                                ];
-                                                
-                                                $nazwaNormalizowana = strtolower($surowiec->nazwa ?? '');
-                                                foreach ($cenySurowcow as $nazwa => $cena) {
-                                                    if (str_contains($nazwaNormalizowana, $nazwa)) {
-                                                        $cenaSurowca = (float) $cena;
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            
-                                            // Konwersja enum na string
-                                            $jednostka = $surowiec->jednostka_miary;
-                                            if ($jednostka instanceof \App\Enums\JednostkaMiary) {
-                                                $jednostka = $jednostka->value;
-                                            } else {
-                                                $jednostka = $jednostka ?? 'g';
-                                            }
-                                            
-                                            $kostSurowca = $gramySurowcaNaZlecenie * $cenaSurowca;
-                                            
-                                            $surowcePotrzebne[] = [
-                                                'id' => $surowiec->id,
-                                                'surowiec_id' => $surowiec->id,
-                                                'nazwa' => $surowiec->nazwa ?? 'Nieznany surowiec',
-                                                'kod' => $surowiec->kod ?? 'SR-' . $surowiec->id,
-                                                'ilosc' => $gramySurowcaNaZlecenie,
-                                                'jednostka' => $jednostka,
-                                                'cena_jednostkowa' => $cenaSurowca,
-                                                'koszt' => $kostSurowca,
-                                            ];
-                                        }
-                                        
-                                        // Dodaj opakowania do surowców
-                                        if ($produkt->opakowanie) {
-                                            $cenaOpakowania = (float) ($produkt->opakowanie->cena ?? 0);
-                                            
-                                            $surowcePotrzebne[] = [
-                                                'id' => 'opakowanie_' . $produkt->opakowanie->id,
-                                                'surowiec_id' => 'opakowanie_' . $produkt->opakowanie->id,
-                                                'nazwa' => $produkt->opakowanie->nazwa ?? 'Nieznane opakowanie',
-                                                'kod' => $produkt->opakowanie->kod ?? 'OP-' . $produkt->opakowanie->id,
-                                                'ilosc' => $ilosc,
-                                                'jednostka' => 'szt',
-                                                'cena_jednostkowa' => $cenaOpakowania,
-                                                'koszt' => $ilosc * $cenaOpakowania,
-                                            ];
-                                        }
-                                        
-                                        // Debug - sprawdź czy są surowce
-                                        \Illuminate\Support\Facades\Log::info('Obliczone surowce', [
-                                            'count' => count($surowcePotrzebne),
-                                            'surowce' => $surowcePotrzebne
-                                        ]);
-                                        
-                                        if ($record) {
-                                            $record->update([
-                                                'surowce_potrzebne' => $surowcePotrzebne,
-                                                'ilosc' => $ilosc,
-                                            ]);
-                                            
-                                            \Filament\Notifications\Notification::make()
-                                                ->title('Sukces')
-                                                ->body('Surowce zostały przeliczone i zapisane.')
-                                                ->success()
-                                                ->send();
-                                            
-                                            redirect(request()->header('Referer'));
-                                        } else {
-                                            // Zapisz do sesji z unikalnym kluczem
-                                            $sessionKey = 'temp_surowce_potrzebne_' . uniqid();
-                                            session([$sessionKey => $surowcePotrzebne]);
-                                            session(['temp_surowce_potrzebne' => $surowcePotrzebne]);
-                                            
-                                            // Debug sesji
-                                            \Illuminate\Support\Facades\Log::info('Zapisano do sesji', [
-                                                'session_key' => $sessionKey,
-                                                'session_data' => session('temp_surowce_potrzebne'),
-                                                'session_all_keys' => array_keys(session()->all())
-                                            ]);
-                                            
-                                            $set('surowce_przeliczone', true);
-                                            
-                                            \Filament\Notifications\Notification::make()
-                                                ->title('Sukces')
-                                                ->body('Surowce zostały przeliczone. Teraz możesz zapisać zlecenie.')
-                                                ->success()
-                                                ->send();
-                                        }
-                                        
-                                        $set('ilosc_zmieniona', false);
-                                    })
+    $produktId = $get('produkt_id');
+    $ilosc = $get('ilosc');
+    
+    // Debug logging
+    \Illuminate\Support\Facades\Log::info('Przelicz surowce - start', [
+        'produkt_id' => $produktId,
+        'ilosc' => $ilosc,
+        'record_exists' => $record ? 'tak' : 'nie'
+    ]);
+    
+    if ($ilosc === null || $ilosc === '' || !is_numeric($ilosc)) {
+        \Filament\Notifications\Notification::make()
+            ->title('Błąd')
+            ->body('Podaj prawidłową ilość produktów.')
+            ->danger()
+            ->send();
+        return;
+    }
+    
+    $ilosc = (int) $ilosc;
+    
+    if ($ilosc <= 0) {
+        \Filament\Notifications\Notification::make()
+            ->title('Błąd')
+            ->body('Ilość musi być większa od 0.')
+            ->danger()
+            ->send();
+        return;
+    }
+    
+    if (!$produktId) {
+        \Filament\Notifications\Notification::make()
+            ->title('Błąd')
+            ->body('Wybierz produkt przed przeliczeniem surowców.')
+            ->danger()
+            ->send();
+        return;
+    }
+    
+    $produkt = \App\Models\Produkt::with(['receptura.surowce', 'opakowanie'])->find($produktId);
+    
+    if (!$produkt || !$produkt->receptura) {
+        \Filament\Notifications\Notification::make()
+            ->title('Błąd')
+            ->body('Produkt nie ma przypisanej receptury.')
+            ->danger()
+            ->send();
+        return;
+    }
+    
+    $surowcePotrzebne = [];
+    
+    // POPRAWIONE OBLICZENIA - uwzględniamy typ receptury
+    $receptura = $produkt->receptura;
+    $opakowanie = $produkt->opakowanie;
+    
+    // Sprawdź kompatybilność opakowania z recepturą
+    $typReceptury = $receptura->typ_receptury ?? \App\Enums\TypReceptury::GRAMY;
+    $jednostkaOpakowania = $opakowanie->jednostka instanceof \App\Enums\JednostkaOpakowania 
+        ? $opakowanie->jednostka->value 
+        : $opakowanie->jednostka;
+        
+    // Sprawdź zgodność typów
+    $kompatybilne = ($typReceptury === \App\Enums\TypReceptury::GRAMY && $jednostkaOpakowania === 'g') ||
+                   ($typReceptury === \App\Enums\TypReceptury::MILILITRY && $jednostkaOpakowania === 'ml');
+                   
+    if (!$kompatybilne) {
+        \Filament\Notifications\Notification::make()
+            ->title('Błąd kompatybilności')
+            ->body("Receptura typu '{$typReceptury->value}' nie jest kompatybilna z opakowaniem typu '{$jednostkaOpakowania}'.")
+            ->danger()
+            ->send();
+        return;
+    }
+    
+    // Oblicz współczynnik skalowania
+    // Receptura zawsze dla 1000 jednostek bazowych (1kg = 1000g lub 1l = 1000ml)
+    $pojemnoscBazowa = (float) ($opakowanie->pojemnosc ?? 0); // np. 250g lub 250ml
+    $wspolczynnikSkalowania = $pojemnoscBazowa / 1000; // 250/1000 = 0,25
+    
+    \Illuminate\Support\Facades\Log::info('Parametry obliczenia', [
+        'typ_receptury' => $typReceptury->value,
+        'jednostka_opakowania' => $jednostkaOpakowania,
+        'pojemnosc_opakowania' => $pojemnoscBazowa,
+        'wspolczynnik_skalowania' => $wspolczynnikSkalowania,
+        'ilosc_produktow' => $ilosc
+    ]);
+    
+    // Oblicz surowce z receptury
+    foreach ($receptura->surowce as $surowiec) {
+        $iloscWRecepturze = (float) ($surowiec->pivot->ilosc ?? 0); // Ilość na 1000 jednostek bazowych (1kg lub 1l)
+        
+        // Przelicz na jedno opakowanie
+        $iloscNaJednoOpakowanie = $iloscWRecepturze * $wspolczynnikSkalowania;
+        
+        // Przelicz na całe zlecenie
+        $iloscNaZlecenie = $iloscNaJednoOpakowanie * $ilosc;
+        
+        // Pobierz cenę surowca
+        $cenaSurowca = (float) ($surowiec->cena_jednostkowa ?? 0);
+        
+        // Fallback ceny jeśli nie ma ustawionej
+        if ($cenaSurowca == 0) {
+            $cenySurowcow = [
+                'kolagen rybi' => 0.050,
+                'proszek ananas' => 0.030,
+                'vit d' => 0.200,
+                'witamina d' => 0.200,
+                'kolagen' => 0.050,
+                'ananas' => 0.030,
+            ];
+            
+            $nazwaNormalizowana = strtolower($surowiec->nazwa ?? '');
+            foreach ($cenySurowcow as $nazwa => $cena) {
+                if (str_contains($nazwaNormalizowana, $nazwa)) {
+                    $cenaSurowca = (float) $cena;
+                    break;
+                }
+            }
+        }
+        
+        // Konwersja enum na string dla jednostki
+        $jednostka = $surowiec->jednostka_miary;
+        if ($jednostka instanceof \App\Enums\JednostkaMiary) {
+            $jednostka = $jednostka->value;
+        } else {
+            $jednostka = $jednostka ?? 'g';
+        }
+        
+        // Konwersja na większe jednostki jeśli wartość przekracza 1000
+        $iloscDoWyswietlenia = $iloscNaZlecenie;
+        $jednostkaDoWyswietlenia = $jednostka;
+        
+        if (($jednostka === 'g' && $iloscNaZlecenie >= 1000) || 
+            ($jednostka === 'ml' && $iloscNaZlecenie >= 1000)) {
+            $iloscDoWyswietlenia = $iloscNaZlecenie / 1000;
+            $jednostkaDoWyswietlenia = $jednostka === 'g' ? 'kg' : 'l';
+        }
+        
+        $kostSurowca = $iloscNaZlecenie * $cenaSurowca;
+        
+        \Illuminate\Support\Facades\Log::info('Obliczenie surowca', [
+            'nazwa' => $surowiec->nazwa,
+            'ilosc_w_recepturze' => $iloscWRecepturze,
+            'ilosc_na_opakowanie' => $iloscNaJednoOpakowanie,
+            'ilosc_na_zlecenie' => $iloscNaZlecenie,
+            'ilosc_do_wyswietlenia' => $iloscDoWyswietlenia,
+            'jednostka_oryginalna' => $jednostka,
+            'jednostka_wyswietlenia' => $jednostkaDoWyswietlenia,
+            'cena_jednostkowa' => $cenaSurowca,
+            'koszt' => $kostSurowca
+        ]);
+        
+        $surowcePotrzebne[] = [
+            'id' => $surowiec->id,
+            'surowiec_id' => $surowiec->id,
+            'nazwa' => $surowiec->nazwa ?? 'Nieznany surowiec',
+            'kod' => $surowiec->kod ?? 'SR-' . $surowiec->id,
+            'ilosc' => $iloscDoWyswietlenia,
+            'jednostka' => $jednostkaDoWyswietlenia,
+            'cena_jednostkowa' => $cenaSurowca,
+            'koszt' => $kostSurowca,
+        ];
+    }
+    
+    // Dodaj opakowania do surowców
+    if ($opakowanie) {
+        $cenaOpakowania = (float) ($opakowanie->cena ?? 0);
+        
+        $surowcePotrzebne[] = [
+            'id' => 'opakowanie_' . $opakowanie->id,
+            'surowiec_id' => 'opakowanie_' . $opakowanie->id,
+            'nazwa' => $opakowanie->nazwa ?? 'Nieznane opakowanie',
+            'kod' => $opakowanie->kod ?? 'OP-' . $opakowanie->id,
+            'ilosc' => $ilosc,
+            'jednostka' => 'szt',
+            'cena_jednostkowa' => $cenaOpakowania,
+            'koszt' => $ilosc * $cenaOpakowania,
+        ];
+    }
+    
+    // Debug - sprawdź czy są surowce
+    \Illuminate\Support\Facades\Log::info('Obliczone surowce', [
+        'count' => count($surowcePotrzebne),
+        'surowce' => $surowcePotrzebne
+    ]);
+    
+    if ($record) {
+        $record->update([
+            'surowce_potrzebne' => $surowcePotrzebne,
+            'ilosc' => $ilosc,
+        ]);
+        
+        \Filament\Notifications\Notification::make()
+            ->title('Sukces')
+            ->body('Surowce zostały przeliczone i zapisane.')
+            ->success()
+            ->send();
+        
+        redirect(request()->header('Referer'));
+    } else {
+        // Zapisz do sesji z unikalnym kluczem
+        $sessionKey = 'temp_surowce_potrzebne_' . uniqid();
+        session([$sessionKey => $surowcePotrzebne]);
+        session(['temp_surowce_potrzebne' => $surowcePotrzebne]);
+        
+        // Debug sesji
+        \Illuminate\Support\Facades\Log::info('Zapisano do sesji', [
+            'session_key' => $sessionKey,
+            'session_data' => session('temp_surowce_potrzebne'),
+            'session_all_keys' => array_keys(session()->all())
+        ]);
+        
+        $set('surowce_przeliczone', true);
+        
+        \Filament\Notifications\Notification::make()
+            ->title('Sukces')
+            ->body('Surowce zostały przeliczone. Teraz możesz zapisać zlecenie.')
+            ->success()
+            ->send();
+    }
+    
+    $set('ilosc_zmieniona', false);
+})
                                     ->requiresConfirmation()
                                     ->modalHeading('Przelicz surowce')
                                     ->modalDescription('Czy na pewno chcesz przeliczyć surowce dla aktualnej ilości produktów?')
