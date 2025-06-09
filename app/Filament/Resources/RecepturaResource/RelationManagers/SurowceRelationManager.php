@@ -272,7 +272,6 @@ public function form(Form $form): Form
                                 ->maxLength(255),
                             Forms\Components\TextInput::make('nazwa_naukowa')
                                 ->label('Nazwa naukowa')
-                                ->required()
                                 ->maxLength(255),
                             Forms\Components\TextInput::make('kod')
                                 ->required()
