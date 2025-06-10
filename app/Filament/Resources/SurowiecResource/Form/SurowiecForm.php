@@ -11,13 +11,21 @@ class SurowiecForm
     {
         return [
             Forms\Components\TextInput::make('nazwa')->label('Nazwa')->required(),
-            Forms\Components\TextInput::make('kod')->label('Kod surowca')
+            
+            Forms\Components\TextInput::make('kod')->label('Index surowca')
                 ->required()
                 ->unique(ignoreRecord: true),
                 // ->default(fn () => self::generateKod()),
             Forms\Components\TextInput::make('nazwa_naukowa')
                 ->label('Nazwa naukowa'),
-
+            // NOWE POLE KATEGORII
+            Forms\Components\Select::make('kategoria')
+                ->label('Kategoria surowca')
+                ->options(\App\Enums\KategoriaSurowca::class)
+                ->searchable()
+                ->placeholder('Wybierz kategorię')
+                ->helperText('Wybierz kategorię która najlepiej opisuje ten surowiec')
+                ->suffixIcon('heroicon-o-tag'),
             Forms\Components\TextInput::make('cena_jednostkowa')->label('Cena jednostkowa')->numeric()->step(0.01)->default(1),
             Forms\Components\Select::make('jednostka_miary')
                 ->options(

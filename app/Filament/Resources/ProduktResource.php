@@ -33,7 +33,7 @@ class ProduktResource extends Resource
                 Forms\Components\TextInput::make('nazwa')
                     ->required()
                     ->maxLength(255),
-                Forms\Components\TextInput::make('kod')
+                Forms\Components\TextInput::make('kod')->label('Index produktu')
                     ->required()
                     ->unique(ignorable: fn ($record) => $record)
                     ->maxLength(255),

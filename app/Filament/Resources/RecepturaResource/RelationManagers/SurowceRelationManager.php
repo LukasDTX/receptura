@@ -273,7 +273,7 @@ public function form(Form $form): Form
                             Forms\Components\TextInput::make('nazwa_naukowa')
                                 ->label('Nazwa naukowa')
                                 ->maxLength(255),
-                            Forms\Components\TextInput::make('kod')
+                            Forms\Components\TextInput::make('kod')->label('Index surowca')
                                 ->required()
                                 ->unique(\App\Models\Surowiec::class)
                                 ->maxLength(255),

@@ -20,13 +20,20 @@ class Surowiec extends Model
         'opis',
         'cena_jednostkowa',
         'jednostka_miary',
+        'kategoria'
     ];
 
     protected $casts = [
         'jednostka_miary' => JednostkaMiary::class, // Jeśli używasz PHP enum (PHP 8.1+)
+        'kategoria' => \App\Enums\KategoriaSurowca::class, // ← DODAJ
         'cena_jednostkowa' => 'decimal:2',
     ];
-
+    
+    // Helper method
+    public function getKategoriaLabelAttribute(): string
+    {
+        return $this->kategoria?->label() ?? 'Bez kategorii';
+    }
     public function receptury(): BelongsToMany
     {
         return $this->belongsToMany(Receptura::class, 'receptura_surowiec')
