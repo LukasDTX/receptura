@@ -56,13 +56,13 @@ enum KategoriaSurowca: string
     public function icon(): string
     {
         return match($this) {
-            self::GRZYB => 'heroicon-o-mushroom',
-            self::HERBATA => 'heroicon-o-cup-tea',
-            self::KOLAGEN => 'heroicon-o-cube-transparent',
-            self::OLEJEK_ETERYCZNY => 'heroicon-o-sparkles',
-            self::SOK => 'heroicon-o-cup-straw-swoosh',
-            self::WODA => 'heroicon-o-cloud-drizzle',
-            self::ZIOLA => 'heroicon-o-grass',
+            self::GRZYB => 'heroicon-o-beaker',
+            self::HERBATA => 'heroicon-o-beaker',
+            self::KOLAGEN => 'heroicon-o-beaker',
+            self::OLEJEK_ETERYCZNY => 'heroicon-o-beaker',
+            self::SOK => 'heroicon-o-beaker',
+            self::WODA => 'heroicon-o-beaker',
+            self::ZIOLA => 'heroicon-o-beaker',
         };
     }
     
