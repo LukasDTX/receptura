@@ -48,6 +48,7 @@ enum KategoriaSurowca: string
             self::KOLAGEN => 'green',
             self::OLEJEK_ETERYCZNY => 'yellow',
             self::SOK => 'amber',
+            self::SUBSTANCJE_BA, => 'red',
             self::WODA => 'yellow',
             self::ZIOLA => 'blue',
         };
@@ -61,6 +62,7 @@ enum KategoriaSurowca: string
             self::KOLAGEN => 'heroicon-o-beaker',
             self::OLEJEK_ETERYCZNY => 'heroicon-o-beaker',
             self::SOK => 'heroicon-o-beaker',
+            self::SUBSTANCJE_BA => 'heroicon-o-beaker',
             self::WODA => 'heroicon-o-beaker',
             self::ZIOLA => 'heroicon-o-beaker',
         };
@@ -74,6 +76,7 @@ enum KategoriaSurowca: string
             self::KOLAGEN => 'KOlagen i białka',
             self::OLEJEK_ETERYCZNY => 'Olejki eteryczne i aromaty',
             self::SOK => 'Soki',
+            self::SUBSTANCJE_BA, => 'Substancje bioaktywne',
             self::WODA => 'H2O i wody mineralne',
             self::ZIOLA => 'Zioła i mieszanki ziołowe',
         };
