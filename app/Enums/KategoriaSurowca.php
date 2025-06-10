@@ -13,6 +13,8 @@ enum KategoriaSurowca: string
     case SUBSTANCJE_BA = 'BA';
     case WODA = 'W';
     case ZIOLA = 'Z';
+    case PROSZEK_OWOCOWY = 'PO';
+    case OLEJEK_KOSMETYCZNY = 'OK';
     
     public function label(): string
     {
@@ -25,6 +27,8 @@ enum KategoriaSurowca: string
             self::SUBSTANCJE_BA => 'Substancje BA',
             self::WODA => 'Woda',
             self::ZIOLA => 'Zioła',
+            self::PROSZEK_OWOCOWY => 'Proszek owocowy',
+            self::OLEJEK_KOSMETYCZNY => 'Olejek kosmetyczny',
         };
     }
     public static function all(): array
@@ -38,6 +42,8 @@ enum KategoriaSurowca: string
             self::SUBSTANCJE_BA,
             self::WODA,
             self::ZIOLA,
+            self::PROSZEK_OWOCOWY,
+            self::OLEJEK_KOSMETYCZNY,
         ];
     }    
     public function color(): string
@@ -51,6 +57,8 @@ enum KategoriaSurowca: string
             self::SUBSTANCJE_BA, => 'red',
             self::WODA => 'yellow',
             self::ZIOLA => 'blue',
+            self::PROSZEK_OWOCOWY => 'pink',
+            self::OLEJEK_KOSMETYCZNY => 'teal',
         };
     }
     
@@ -65,6 +73,8 @@ enum KategoriaSurowca: string
             self::SUBSTANCJE_BA => 'heroicon-o-beaker',
             self::WODA => 'heroicon-o-beaker',
             self::ZIOLA => 'heroicon-o-beaker',
+            self::PROSZEK_OWOCOWY => 'heroicon-o-beaker',
+            self::OLEJEK_KOSMETYCZNY => 'heroicon-o-beaker',
         };
     }
     
@@ -79,6 +89,8 @@ enum KategoriaSurowca: string
             self::SUBSTANCJE_BA, => 'Substancje bioaktywne',
             self::WODA => 'H2O i wody mineralne',
             self::ZIOLA => 'Zioła i mieszanki ziołowe',
+            self::PROSZEK_OWOCOWY => 'Proszki owocowe i warzywne',
+            self::OLEJEK_KOSMETYCZNY => 'Olejki kosmetyczne i pielęgnacyjne'
         };
     }
 }
