@@ -5,83 +5,77 @@ namespace App\Enums;
 
 enum KategoriaSurowca: string
 {
+    case GRZYB = 'G';
+    case HERBATA = 'H';
+    case KOLAGEN = 'K';
     case OLEJEK_ETERYCZNY = 'OE';
     case SOK = 'S';
-    case EKSTRAKT = 'E';
-    case PROSZEK = 'P';
-    case OLEJ = 'O';
-    case MIOD = 'M';
-    case DODATEK = 'D';
-    case KONSERWANT = 'K';
-    case WITAMINA = 'W';
-    case MINERAL = 'MIN';
-    case AROMAT = 'A';
+    case SUBSTANCJE_BA = 'BA';
+    case WODA = 'W';
+    case ZIOLA = 'Z';
     
     public function label(): string
     {
         return match($this) {
+            self::GRZYB => 'Grzyb',
+            self::HERBATA => 'Herbata',
+            self::KOLAGEN => 'Kolagen',
             self::OLEJEK_ETERYCZNY => 'Olejek eteryczny',
             self::SOK => 'Sok',
-            self::EKSTRAKT => 'Ekstrakt',
-            self::PROSZEK => 'Proszek',
-            self::OLEJ => 'Olej',
-            self::MIOD => 'Miód',
-            self::DODATEK => 'Dodatek funkcjonalny',
-            self::KONSERWANT => 'Konserwant',
-            self::WITAMINA => 'Witamina',
-            self::MINERAL => 'Minerał',
-            self::AROMAT => 'Aromat',
+            self::SUBSTANCJE_BA => 'Substancje BA',
+            self::WODA => 'Woda',
+            self::ZIOLA => 'Zioła',
         };
     }
-    
+    public static function all(): array
+    {
+        return [
+            self::GRZYB,
+            self::HERBATA,
+            self::KOLAGEN,
+            self::OLEJEK_ETERYCZNY,
+            self::SOK,
+            self::SUBSTANCJE_BA,
+            self::WODA,
+            self::ZIOLA,
+        ];
+    }    
     public function color(): string
     {
         return match($this) {
-            self::OLEJEK_ETERYCZNY => 'purple',
-            self::SOK => 'orange',
-            self::EKSTRAKT => 'green',
-            self::PROSZEK => 'yellow',
-            self::OLEJ => 'amber',
-            self::MIOD => 'yellow',
-            self::DODATEK => 'blue',
-            self::KONSERWANT => 'red',
-            self::WITAMINA => 'emerald',
-            self::MINERAL => 'gray',
-            self::AROMAT => 'pink',
+            self::GRZYB => 'purple',
+            self::HERBATA => 'orange',
+            self::KOLAGEN => 'green',
+            self::OLEJEK_ETERYCZNY => 'yellow',
+            self::SOK => 'amber',
+            self::WODA => 'yellow',
+            self::ZIOLA => 'blue',
         };
     }
     
     public function icon(): string
     {
         return match($this) {
-            self::OLEJEK_ETERYCZNY => 'heroicon-o-beaker',
-            self::SOK => 'heroicon-o-square-3-stack-3d',
-            self::EKSTRAKT => 'heroicon-o-leaf',
-            self::PROSZEK => 'heroicon-o-squares-plus',
-            self::OLEJ => 'heroicon-o-drop',
-            self::MIOD => 'heroicon-o-sun',
-            self::DODATEK => 'heroicon-o-plus-circle',
-            self::KONSERWANT => 'heroicon-o-shield-check',
-            self::WITAMINA => 'heroicon-o-heart',
-            self::MINERAL => 'heroicon-o-cube',
-            self::AROMAT => 'heroicon-o-sparkles',
+            self::GRZYB => 'heroicon-o-beaker',
+            self::HERBATA => 'heroicon-o-square-3-stack-3d',
+            self::KOLAGEN => 'heroicon-o-leaf',
+            self::OLEJEK_ETERYCZNY => 'heroicon-o-squares-plus',
+            self::SOK => 'heroicon-o-drop',
+            self::WODA => 'heroicon-o-sun',
+            self::ZIOLA => 'heroicon-o-plus-circle',
         };
     }
     
     public function description(): string
     {
         return match($this) {
-            self::OLEJEK_ETERYCZNY => 'Naturalne olejki eteryczne z roślin',
-            self::SOK => 'Soki owocowe i warzywne',
-            self::EKSTRAKT => 'Ekstrakty roślinne i ziołowe',
-            self::PROSZEK => 'Surowce w formie proszku',
-            self::OLEJ => 'Oleje roślinne i tłuszcze',
-            self::MIOD => 'Miód i produkty pszczele',
-            self::DODATEK => 'Dodatki funkcjonalne i aktywne',
-            self::KONSERWANT => 'Substancje konserwujące',
-            self::WITAMINA => 'Witaminy i ich pochodne',
-            self::MINERAL => 'Minerały i sole',
-            self::AROMAT => 'Aromaty naturalne i identyczne',
+            self::GRZYB => 'Grzyby i ich ekstrakty',
+            self::HERBATA => 'Herbaty i napary',
+            self::KOLAGEN => 'KOlagen i białka',
+            self::OLEJEK_ETERYCZNY => 'Olejki eteryczne i aromaty',
+            self::SOK => 'Soki',
+            self::WODA => 'H2O i wody mineralne',
+            self::ZIOLA => 'Zioła i mieszanki ziołowe',
         };
     }
 }
