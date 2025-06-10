@@ -486,11 +486,11 @@ foreach ($surowce as $surowiec) {
     
     
     // Usuń zbędne zera z końca (opcjonalnie)
-    $iloscFormatowana = rtrim($iloscFormatowana, '0');
+    //$iloscFormatowana = rtrim($iloscFormatowana, '0');
     $iloscFormatowana = rtrim($iloscFormatowana, '.');
     }
     $html .= '<td class="py-2 px-4">' . $iloscFormatowana . ' ' . htmlspecialchars($surowiec['jednostka']) . '</td>';
-    $html .= '<td class="py-2 px-4">' . number_format($surowiec['cena_jednostkowa'], 3) . ' PLN</td>';
+    $html .= '<td class="py-2 px-4">' . number_format($surowiec['cena_jednostkowa'], 2) . ' PLN</td>';
     $html .= '<td class="py-2 px-4 font-semibold">' . number_format($surowiec['koszt'], 2) . ' PLN</td>';
     $html .= '</tr>';
     
