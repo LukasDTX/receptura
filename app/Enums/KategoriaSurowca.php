@@ -58,7 +58,7 @@ enum KategoriaSurowca: string
         return match($this) {
             self::GRZYB => 'heroicon-o-beaker',
             self::HERBATA => 'heroicon-o-square-3-stack-3d',
-            self::KOLAGEN => 'heroicon-o-leaf',
+            self::KOLAGEN => 'heroicon-o-cube-transparent',
             self::OLEJEK_ETERYCZNY => 'heroicon-o-squares-plus',
             self::SOK => 'heroicon-o-drop',
             self::WODA => 'heroicon-o-sun',
