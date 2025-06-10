@@ -48,7 +48,8 @@ class OpakowanieTable
                     }),
                 Tables\Columns\TextColumn::make('cena')
                     ->money('pln')
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
