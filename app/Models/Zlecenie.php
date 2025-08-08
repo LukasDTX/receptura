@@ -207,4 +207,19 @@ class Zlecenie extends Model
             throw $e; // Przekaż wyjątek dalej, aby mógł być obsłużony przez interfejs
         }
     }
+    public static function generateNumerPartii(): string
+    {
+        $rok = date('Y');
+        $miesiac = date('m');
+        $dzien = date('d');
+        
+        // Licz ZLECENIA które mają data_produkcji na dzisiaj
+        $ostatniNumer = static::whereDate('data_produkcji', today())
+            ->whereNotNull('data_produkcji')  // tylko te z ustawioną datą produkcji
+            ->count();
+            
+        $numerDnia = str_pad($ostatniNumer + 1, 3, '0', STR_PAD_LEFT);
+        
+        return "P{$rok}{$miesiac}{$dzien}-{$numerDnia}";
+    }
 }

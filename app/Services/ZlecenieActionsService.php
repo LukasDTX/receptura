@@ -8,7 +8,7 @@ use Filament\Tables\Actions\Action;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Collection;
-
+use Carbon\Carbon;
 class ZlecenieActionsService
 {
     public function __construct(
@@ -80,7 +80,7 @@ class ZlecenieActionsService
             ->label('Zobacz pobrane surowce')
             ->icon('heroicon-o-clipboard-document-list')
             ->color('info')
-            ->visible(fn ($record) => $record->status === 'w_realizacji')
+            ->visible(fn ($record) => $record->status === 'w_realizacji' || $record->status === 'zrealizowane')
             ->modalHeading(fn ($record) => 'Pobrane surowce - Zlecenie: ' . $record->numer)
             ->modalContent(function ($record) {
                 $podsumowanie = $this->zlecenieService->getPobraneSurowce($record);
@@ -133,102 +133,150 @@ class ZlecenieActionsService
     /**
      * Tworzy akcję pobierania surowców z magazynu
      */
-    public function createPobierzSurowceAction(): Action
-    {
-        return Action::make('pobierz_surowce')
-            ->label('Pobierz surowce')
-            ->icon('heroicon-o-arrow-down-tray')
-            ->color('success')
-            ->action(function ($record) {
-                try {
-                    $wyniki = $this->zlecenieService->pobierzSurowceDoZlecenia($record);
-                    
-                    $komunikat = "✅ Surowce zostały pobrane z magazynu!\n\nPodsumowanie:\n";
-                    
-                    foreach ($wyniki as $wynik) {
-                        $komunikat .= "\n• {$wynik['nazwa']}: {$wynik['calkowita_masa']}kg\n";
-                        
-                        foreach ($wynik['pobrania'] as $pobranie) {
-                            $komunikat .= "  - Partia {$pobranie['numer_partii']}: {$pobranie['masa_pobrana']}kg\n";
-                        }
-                    }
-                    
+public function createUruchomProdukcjeAction(): Action
+{
+    return Action::make('uruchom produkcje')
+        ->label('Uruchom produkcję')
+        ->icon('heroicon-o-arrow-down-tray')
+        ->color('success')
+        ->action(function ($record) {
+            try {
+                $okresEnum = $record->produkt->okres_waznosci ?? null;
+                $okres = strtoupper(trim($okresEnum?->value ?? ''));
+
+                if (empty($okres)) {
+                    throw new \Exception('Brak zdefiniowanego okresu ważności w produkcie.');
+                }
+
+                $wyniki = $this->zlecenieService->pobierzSurowceDoZlecenia($record);
+                if (empty($wyniki)) {
                     Notification::make()
-                        ->title('Surowce pobrane')
-                        ->body($komunikat)
-                        ->success()
-                        ->persistent()
-                        ->send();
-                        
-                } catch (\Exception $e) {
-                    Notification::make()
-                        ->title('Błąd podczas pobierania surowców')
-                        ->body($e->getMessage())
+                        ->title('Brak surowców')
+                        ->body('Nie można uruchomić produkcji, ponieważ brakuje surowców w magazynie.')
                         ->danger()
                         ->persistent()
                         ->send();
+                    return;
                 }
-            })
-            ->requiresConfirmation()
-            ->modalHeading('Pobierz surowce do zlecenia')
-            ->modalDescription('Czy na pewno chcesz pobrać surowce z magazynu do tego zlecenia? Ta akcja spowoduje wydanie surowców z magazynu.')
-            ->modalSubmitActionLabel('Pobierz surowce')
-            ->visible(fn ($record) => $record->status === 'nowe' && !empty($record->surowce_potrzebne));
-    }
+
+                // NAJPIERW wygeneruj numer partii (PRZED aktualizacją rekordu)
+                $numerPartii = Zlecenie::generateNumerPartii();
+
+                $dataWaznosci = now();
+                if (preg_match('/^(\d+)M$/', $okres, $matches)) {
+                    $dataWaznosci->addMonths((int) $matches[1]);
+                } elseif (preg_match('/^(\d+)D$/', $okres, $matches)) {
+                    $dataWaznosci->addDays((int) $matches[1]);
+                } else {
+                    throw new \Exception("Nieprawidłowy format okresu ważności: {$okres}");
+                }
+
+                // Zaktualizuj rekord z wszystkimi danymi
+                $record->update([
+                    'data_produkcji' => now()->startOfDay(), // DODANE - ustaw datę produkcji
+                    'data_waznosci' => $dataWaznosci->startOfDay(),
+                    'numer_partii' => $numerPartii
+                ]);
+
+                $komunikat = "✅ Surowce zostały pobrane z magazynu!\n";
+                $komunikat .= "Numer partii: {$numerPartii}\n";
+                $komunikat .= "Data ważności: {$dataWaznosci->format('Y-m-d')}\n\n";
+                $komunikat .= "Podsumowanie:\n";
+
+                foreach ($wyniki as $wynik) {
+                    $komunikat .= "\n• {$wynik['nazwa']}: {$wynik['calkowita_masa']}kg\n";
+                    foreach ($wynik['pobrania'] as $pobranie) {
+                        $komunikat .= "  - Partia {$pobranie['numer_partii']}: {$pobranie['masa_pobrana']}kg\n";
+                    }
+                }
+
+                Notification::make()
+                    ->title('Produkcja uruchomiona')
+                    ->body($komunikat)
+                    ->success()
+                    ->persistent()
+                    ->send();
+
+            } catch (\Exception $e) {
+                Notification::make()
+                    ->title('Błąd podczas uruchamiania produkcji')
+                    ->body($e->getMessage())
+                    ->danger()
+                    ->persistent()
+                    ->send();
+            }
+        })
+        ->requiresConfirmation()
+        ->modalHeading('Pobierz surowce do zlecenia')
+        ->modalDescription('Czy na pewno chcesz pobrać surowce z magazynu do tego zlecenia? Ta akcja spowoduje wydanie surowców z magazynu.')
+        ->modalSubmitActionLabel('Pobierz surowce')
+        ->visible(fn ($record) => $record->status === 'nowe' && !empty($record->surowce_potrzebne));
+}
+
+
+
+
 
     /**
      * Tworzy akcję tworzenia partii z zlecenia
      */
-    public function createUtworzPartieAction(): Action
-    {
-        return Action::make('utworz_partie')
-            ->label('Utwórz partię')
-            ->icon('heroicon-o-cube-transparent')
-            ->color('success')
-            ->visible(fn ($record) => $record->status === 'zrealizowane')
-            ->form([
-                Forms\Components\TextInput::make('numer_partii')
-                    ->label('Numer partii')
-                    ->default(fn () => Partia::generateNumerPartii())
-                    ->required(),
-                Forms\Components\TextInput::make('ilosc_wyprodukowana')
-                    ->label('Ilość rzeczywiście wyprodukowana')
-                    ->numeric()
-                    ->required()
-                    ->default(fn ($record) => $record->ilosc),
-                Forms\Components\DatePicker::make('data_produkcji')
-                    ->label('Data produkcji')
-                    ->required()
-                    ->default(now()),
-                Forms\Components\DatePicker::make('data_waznosci')
-                    ->label('Data ważności')
-                    ->default(now()->addMonths(12)),
-                Forms\Components\Textarea::make('uwagi')
-                    ->label('Uwagi dotyczące produkcji'),
-            ])
-            ->action(function (array $data, $record) {
-                try {
-                    $partia = $this->zlecenieService->utworzPartieZZlecenia($record, $data);
-                    
-                    Notification::make()
-                        ->title('Partia utworzona')
-                        ->body("Partia {$partia->numer_partii} została utworzona i dodana do magazynu.")
-                        ->success()
-                        ->send();
-                        
-                } catch (\Exception $e) {
-                    Notification::make()
-                        ->title('Błąd podczas tworzenia partii')
-                        ->body($e->getMessage())
-                        ->danger()
-                        ->send();
+public function createUtworzPartieAction(): Action
+{
+    return Action::make('utworz_partie')
+        ->label('Wyślij na magazyn')
+        ->icon('heroicon-o-cube-transparent')
+        ->color('success')
+        ->visible(fn ($record) => $record->status === 'zrealizowane' && !empty($record->numer_partii)) // Sprawdź czy ma numer partii
+        ->form([
+            Forms\Components\TextInput::make('numer_partii')
+                ->label('Numer partii')
+                ->readOnly()
+                ->default(fn ($record) => $record->numer_partii)
+                ->required(),
+            Forms\Components\TextInput::make('ilosc_wyprodukowana')
+                ->label('Ilość rzeczywiście wyprodukowana')
+                ->numeric()
+                ->required()
+                ->default(fn ($record) => $record->ilosc),
+            Forms\Components\DatePicker::make('data_produkcji')
+                ->label('Data produkcji')
+                ->required()
+                ->default(fn ($record) => $record->data_produkcji ?? now()),
+            Forms\Components\DatePicker::make('data_waznosci')
+                ->label('Data ważności')
+                ->default(fn ($record) => $record->data_waznosci ?? now()->addMonths(12))
+                ->readOnly(),
+            Forms\Components\Textarea::make('uwagi')
+                ->label('Uwagi dotyczące produkcji'),
+        ])
+        ->action(function (array $data, $record) {
+            try {
+                // Dodatkowa walidacja w akcji
+                if (empty($record->numer_partii)) {
+                    throw new \Exception('Zlecenie nie ma wygenerowanego numeru partii. Najpierw uruchom produkcję.');
                 }
-            })
-            ->requiresConfirmation()
-            ->modalHeading('Utwórz partię produktu')
-            ->modalDescription('Zostanie utworzona nowa partia i dodana do magazynu.')
-            ->modalSubmitActionLabel('Utwórz partię');
-    }
+                
+                $partia = $this->zlecenieService->utworzPartieZZlecenia($record, $data);
+                
+                Notification::make()
+                    ->title('Partia utworzona')
+                    ->body("Partia {$partia->numer_partii} została utworzona i dodana do magazynu.")
+                    ->success()
+                    ->send();
+                    
+            } catch (\Exception $e) {
+                Notification::make()
+                    ->title('Błąd podczas tworzenia partii')
+                    ->body($e->getMessage())
+                    ->danger()
+                    ->send();
+            }
+        })
+        ->requiresConfirmation()
+        ->modalHeading('Utwórz partię produktu')
+        ->modalDescription('Zostanie utworzona nowa partia i dodana do magazynu.')
+        ->modalSubmitActionLabel('Utwórz partię');
+}
 
     /**
      * Tworzy akcję zmiany statusu (bulk action)

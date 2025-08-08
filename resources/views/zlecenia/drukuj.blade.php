@@ -163,6 +163,22 @@
                         <span class="info-label">Kod:</span>
                         <span class="info-value">{{ $zlecenie->produkt->kod }}</span>
                     </div>
+
+                    {{-- Nowe pola: numer partii i data ważności --}}
+                    @if($zlecenie->numer_partii)
+                        <div class="info-row">
+                            <span class="info-label">Numer partii:</span>
+                            <span class="info-value">{{ $zlecenie->numer_partii }}</span>
+                        </div>
+                    @endif
+
+                    @if($zlecenie->data_waznosci)
+                        <div class="info-row">
+                            <span class="info-label">Data ważności:</span>
+                            <span class="info-value">{{ \Carbon\Carbon::parse($zlecenie->data_waznosci)->translatedFormat('d F Y') }}</span>
+                        </div>
+                    @endif
+
                     @if($zlecenie->produkt->receptura)
                         <div class="info-row">
                             <span class="info-label">Receptura:</span>
@@ -184,6 +200,7 @@
                 <p>Brak danych o produkcie.</p>
             @endif
         </div>
+
         
         <div class="info-section">
             <div class="section-title">Surowce potrzebne do realizacji zlecenia</div>

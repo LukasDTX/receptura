@@ -131,17 +131,110 @@ class ZlecenieService
         return $this->groupSurowceByType($ruchy);
     }
 
-    /**
-     * Tworzy partię produktu z zlecenia
-     */
-    public function utworzPartieZZlecenia(Zlecenie $zlecenie, array $data): Partia
-    {
-        if ($zlecenie->status !== 'zrealizowane') {
-            throw new \Exception('Można tworzyć partie tylko dla zrealizowanych zleceń.');
-        }
 
-        return Partia::createFromZlecenie($zlecenie, $data);
+/**
+ * Tworzy partię produktu z zlecenia
+ */
+public function utworzPartieZZlecenia(Zlecenie $zlecenie, array $data): Partia
+{
+    if ($zlecenie->status !== 'zrealizowane') {
+        throw new \Exception('Można tworzyć partie tylko dla zrealizowanych zleceń.');
     }
+
+    // Sprawdź czy zlecenie ma numer partii
+    if (empty($zlecenie->numer_partii)) {
+        throw new \Exception('Zlecenie nie ma wygenerowanego numeru partii. Najpierw uruchom produkcję.');
+    }
+
+    return DB::transaction(function () use ($zlecenie, $data) {
+        // Utwórz partię używając danych z formularza i zlecenia
+        $partia = Partia::create([
+            'numer_partii' => $data['numer_partii'],
+            'zlecenie_id' => $zlecenie->id,
+            'produkt_id' => $zlecenie->produkt_id,
+            'ilosc_wyprodukowana' => $data['ilosc_wyprodukowana'],
+            'data_produkcji' => $data['data_produkcji'],
+            'data_waznosci' => $data['data_waznosci'],
+            'uwagi' => $data['uwagi'] ?? null,
+            'surowce_uzyte' => $zlecenie->surowce_potrzebne,
+            'koszt_produkcji' => $this->obliczKosztProdukcji($zlecenie->surowce_potrzebne ?? []),
+            'status' => \App\Enums\StatusPartii::WYPRODUKOWANA,
+        ]);
+
+        // AUTOMATYCZNIE DODAJ PARTIĘ DO STANU MAGAZYNU
+        $this->dodajPartieDoMagazynu($partia);
+
+        return $partia;
+    });
+}
+
+/**
+ * Dodaje partię produktu do stanu magazynu
+ */
+private function dodajPartieDoMagazynu(Partia $partia): void
+{
+    // Sprawdź czy już istnieje pozycja w magazynie dla tej partii
+    $stanMagazynu = \App\Models\StanMagazynu::where('typ_towaru', 'produkt')
+        ->where('towar_id', $partia->produkt_id)
+        ->where('numer_partii', $partia->numer_partii)
+        ->first();
+
+    if ($stanMagazynu) {
+        // Aktualizuj istniejącą pozycję (jeśli już istnieje)
+        $stanMagazynu->update([
+            'ilosc_dostepna' => $stanMagazynu->ilosc_dostepna + $partia->ilosc_wyprodukowana,
+            'data_waznosci' => $partia->data_waznosci,
+            'wartosc' => $stanMagazynu->wartosc + $partia->koszt_produkcji,
+        ]);
+    } else {
+        // Utwórz nową pozycję w magazynie
+        \App\Models\StanMagazynu::create([
+            'typ_towaru' => 'produkt',
+            'towar_id' => $partia->produkt_id,
+            'numer_partii' => $partia->numer_partii,
+            'ilosc_dostepna' => $partia->ilosc_wyprodukowana,
+            'jednostka' => 'szt', // Dostosuj do jednostki produktu
+            'wartosc' => $partia->koszt_produkcji,
+            'data_waznosci' => $partia->data_waznosci,
+            'lokalizacja' => 'Magazyn produktów', // Domyślna lokalizacja
+        ]);
+    }
+    
+    // Utwórz ruch magazynowy dla śledzenia
+    \App\Models\RuchMagazynowy::create([
+        'typ_ruchu' => 'przyjecie',
+        'typ_towaru' => 'produkt',
+        'towar_id' => $partia->produkt_id,
+        'numer_partii' => $partia->numer_partii,
+        'ilosc' => $partia->ilosc_wyprodukowana,
+        'jednostka' => 'szt',
+        'cena_jednostkowa' => $partia->ilosc_wyprodukowana > 0 ? $partia->koszt_produkcji / $partia->ilosc_wyprodukowana : 0,
+        'wartosc' => $partia->koszt_produkcji,
+        'data_ruchu' => now(),
+        'zrodlo_docelowe' => 'Przyjęcie z produkcji',
+        'uwagi' => "Partia z zlecenia {$partia->zlecenie->numer}",
+        'user_id' => auth()->id(),
+        'zlecenie_id' => $partia->zlecenie_id,
+    ]);
+}
+
+
+/**
+ * Oblicza koszt produkcji na podstawie użytych surowców
+ */
+private function obliczKosztProdukcji(array $surowce): float
+{
+    if (empty($surowce)) {
+        return 0.0;
+    }
+
+    $suma = 0.0;
+    foreach ($surowce as $surowiec) {
+        $suma += (float) ($surowiec['koszt'] ?? 0);
+    }
+
+    return $suma;
+}
 
     /**
      * Pobiera informacje o produkcie dla formularza

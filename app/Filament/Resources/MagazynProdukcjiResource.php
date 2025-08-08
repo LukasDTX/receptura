@@ -10,6 +10,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Carbon\Carbon;
 
 class MagazynProdukcjiResource extends Resource
 {
@@ -98,17 +99,23 @@ class MagazynProdukcjiResource extends Resource
                     ->date()
                     ->sortable(),
                     
-                Tables\Columns\TextColumn::make('dni_w_produkcji')
-                    ->label('Dni w produkcji')
-                    ->getStateUsing(fn ($record) => 
-                        now()->diffInDays($record->data_przeniesienia)
-                    )
-                    ->badge()
-                    ->color(function ($state) {
-                        if ($state <= 7) return 'success';
-                        if ($state <= 30) return 'warning';
-                        return 'danger';
-                    }),
+Tables\Columns\TextColumn::make('dni_w_produkcji')
+    ->label('Dni w produkcji')
+->getStateUsing(function ($record) {
+    $data = Carbon::parse($record->data_przeniesienia);
+
+    $dni = (int) now()->diffInDays($data);
+    $godziny = (int) now()->diffInHours($data) - ($dni * 24);
+
+    return "{$dni} dni ({$godziny} godz.)";
+})
+    ->badge()
+    ->color(function ($record) {
+        $dni = now()->diffInDays(Carbon::parse($record->data_przeniesienia));
+        if ($dni <= 7) return 'success';
+        if ($dni <= 30) return 'warning';
+        return 'danger';
+    }),
                     
                 Tables\Columns\TextColumn::make('partiaSurowca.data_waznosci')
                     ->label('Data ważności')

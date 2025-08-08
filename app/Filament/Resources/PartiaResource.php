@@ -29,164 +29,176 @@ class PartiaResource extends Resource
     
     protected static ?int $navigationSort = 10;
 
-    public static function form(Form $form): Form
-    {
-        return $form
-            ->schema([
-                Forms\Components\TextInput::make('numer_partii')
-                    ->label('Numer partii')
-                    ->default(fn () => Partia::generateNumerPartii())
-                    ->required()
-                    ->unique(ignorable: fn ($record) => $record)
-                    ->readonly()
-                    ->helperText('Automatycznie generowany'),
-                    
-                Forms\Components\Select::make('zlecenie_id')
-                    ->label('Zlecenie produkcyjne')
-                    ->options(function () {
-                        return Zlecenie::with('produkt')
-                            ->where('status', 'zrealizowane')
-                            ->get()
-                            ->mapWithKeys(function ($zlecenie) {
-                                return [$zlecenie->id => $zlecenie->numer . ' - ' . ($zlecenie->produkt->nazwa ?? 'Nieznany produkt')];
-                            });
-                    })
-                    ->searchable()
-                    ->preload()
-                    ->required()
-                    ->reactive()
-                    ->afterStateUpdated(function ($state, callable $set) {
-                        if ($state) {
-                            $zlecenie = Zlecenie::with('produkt')->find($state);
-                            if ($zlecenie) {
-                                $set('produkt_id', $zlecenie->produkt_id);
-                                $set('ilosc_wyprodukowana', $zlecenie->ilosc);
-                                $set('surowce_uzyte', $zlecenie->surowce_potrzebne);
-                            }
+public static function form(Form $form): Form
+{
+    return $form
+        ->schema([
+            Forms\Components\TextInput::make('numer_partii')
+                ->label('Numer partii')
+                ->required()
+                ->unique(ignorable: fn ($record) => $record)
+                ->readonly()
+                ->helperText('Pobierany automatycznie z wybranego zlecenia'),
+                
+            Forms\Components\Select::make('zlecenie_id')
+                ->label('Zlecenie produkcyjne')
+                ->options(function () {
+                    return Zlecenie::with('produkt')
+                        ->where('status', 'zrealizowane')
+                        ->whereNotNull('numer_partii') // Tylko zlecenia z numerem partii
+                        ->get()
+                        ->mapWithKeys(function ($zlecenie) {
+                            return [$zlecenie->id => $zlecenie->numer . ' - ' . ($zlecenie->produkt->nazwa ?? 'Nieznany produkt') . ' (Partia: ' . $zlecenie->numer_partii . ')'];
+                        });
+                })
+                ->searchable()
+                ->preload()
+                ->required()
+                ->reactive()
+                ->afterStateUpdated(function ($state, callable $set) {
+                    if ($state) {
+                        $zlecenie = Zlecenie::with('produkt')->find($state);
+                        if ($zlecenie) {
+                            // Pobierz dane z zlecenia
+                            $set('numer_partii', $zlecenie->numer_partii); // GŁÓWNA ZMIANA
+                            $set('produkt_id', $zlecenie->produkt_id);
+                            $set('ilosc_wyprodukowana', $zlecenie->ilosc);
+                            $set('data_produkcji', $zlecenie->data_produkcji);
+                            $set('data_waznosci', $zlecenie->data_waznosci);
+                            $set('surowce_uzyte', $zlecenie->surowce_potrzebne);
                         }
-                    }),
-                    
-                Forms\Components\TextInput::make('produkt_id')
-                    ->label('Produkt')
-                    ->disabled()
-                    ->dehydrated(),
-                    
-                Forms\Components\Grid::make(2)
-                    ->schema([
-                        Forms\Components\TextInput::make('ilosc_wyprodukowana')
-                            ->label('Ilość wyprodukowana')
-                            ->required()
-                            ->numeric()
-                            ->minValue(1)
-                            ->suffix('szt'),
+                    } else {
+                        // Wyczyść pola gdy nie ma zlecenia
+                        $set('numer_partii', null);
+                        $set('produkt_id', null);
+                        $set('ilosc_wyprodukowana', null);
+                        $set('data_produkcji', now());
+                        $set('data_waznosci', now()->addMonths(12));
+                        $set('surowce_uzyte', null);
+                    }
+                }),
+                
+            Forms\Components\TextInput::make('produkt_id')
+                ->label('Produkt')
+                ->disabled()
+                ->dehydrated(),
+                
+            Forms\Components\Grid::make(2)
+                ->schema([
+                    Forms\Components\TextInput::make('ilosc_wyprodukowana')
+                        ->label('Ilość wyprodukowana')
+                        ->required()
+                        ->numeric()
+                        ->minValue(1)
+                        ->suffix('szt'),
+                        
+                    Forms\Components\DatePicker::make('data_produkcji')
+                        ->label('Data produkcji')
+                        ->required()
+                        ->default(now()),
+                ]),
+                
+            Forms\Components\Grid::make(2)
+                ->schema([
+                    Forms\Components\DatePicker::make('data_waznosci')
+                        ->label('Data ważności')
+                        ->minDate(fn (Get $get) => $get('data_produkcji'))
+                        ->default(now()->addMonths(12)),
+                        
+                    Forms\Components\Select::make('status')
+                        ->label('Status')
+                        ->options(StatusPartii::class)
+                        ->default(StatusPartii::WYPRODUKOWANA)
+                        ->required(),
+                ]),
+                
+            Forms\Components\TextInput::make('koszt_produkcji')
+                ->label('Koszt produkcji')
+                ->numeric()
+                ->prefix('PLN')
+                ->default(0)
+                ->helperText('Automatycznie obliczany na podstawie użytych surowców'),
+                
+            Forms\Components\Textarea::make('uwagi')
+                ->label('Uwagi')
+                ->columnSpanFull(),
+                
+            // Sekcja surowców użytych
+            Forms\Components\Section::make('Surowce użyte w produkcji')
+                ->description('Lista surowców rzeczywiście użytych do produkcji tej partii')
+                ->schema([
+                    Forms\Components\Placeholder::make('surowce_info')
+                        ->label('')
+                        ->content(function ($record, Get $get) {
+                            $surowce = null;
+                            if (!$record) {
+                                $surowce = $get('surowce_uzyte');
+                            } else {
+                                $surowce = $record->surowce_uzyte;
+                            }
                             
-                        Forms\Components\DatePicker::make('data_produkcji')
-                            ->label('Data produkcji')
-                            ->required()
-                            ->default(now()),
-                    ]),
-                    
-                Forms\Components\Grid::make(2)
-                    ->schema([
-                        Forms\Components\DatePicker::make('data_waznosci')
-                            ->label('Data ważności')
-                            ->minDate(fn (Get $get) => $get('data_produkcji'))
-                            ->default(now()->addMonths(12)),
+                            if (!$surowce || empty($surowce)) {
+                                return '<div style="padding: 20px; text-align: center; color: #6b7280;">
+                                        <p>Brak danych o użytych surowcach.</p>
+                                        <p><small>Wybierz zlecenie, aby załadować listę surowców.</small></p>
+                                        </div>';
+                            }
                             
-                        Forms\Components\Select::make('status')
-                            ->label('Status')
-                            ->options(StatusPartii::class)
-                            ->default(StatusPartii::WYPRODUKOWANA)
-                            ->required(),
-                    ]),
-                    
-                Forms\Components\TextInput::make('koszt_produkcji')
-                    ->label('Koszt produkcji')
-                    ->numeric()
-                    ->prefix('PLN')
-                    ->default(0)
-                    ->helperText('Automatycznie obliczany na podstawie użytych surowców'),
-                    
-                Forms\Components\Textarea::make('uwagi')
-                    ->label('Uwagi')
-                    ->columnSpanFull(),
-                    
-                // Sekcja surowców użytych
-                Forms\Components\Section::make('Surowce użyte w produkcji')
-                    ->description('Lista surowców rzeczywiście użytych do produkcji tej partii')
-                    ->schema([
-                        Forms\Components\Placeholder::make('surowce_info')
-                            ->label('')
-                            ->content(function ($record, Get $get) {
-                                $surowce = null;
-                                if (!$record) {
-                                    $surowce = $get('surowce_uzyte');
-                                } else {
-                                    $surowce = $record->surowce_uzyte;
-                                }
+                            $html = '<div style="overflow-x: auto;">';
+                            $html .= '<table class="w-full text-left border-collapse border border-gray-300">';
+                            $html .= '<thead>';
+                            $html .= '<tr style="background-color: #f9fafb;">';
+                            $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Nazwa</th>';
+                            $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Kod</th>';
+                            $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Ilość</th>';
+                            $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Cena jedn.</th>';
+                            $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Koszt</th>';
+                            $html .= '</tr>';
+                            $html .= '</thead>';
+                            $html .= '<tbody>';
+                            
+                            $suma = 0;
+                            
+                            foreach ($surowce as $surowiec) {
+                                $html .= '<tr style="border-bottom: 1px solid #e5e7eb;">';
+                                $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['nazwa']) . '</td>';
+                                $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['kod']) . '</td>';
                                 
-                                if (!$surowce || empty($surowce)) {
-                                    return '<div style="padding: 20px; text-align: center; color: #6b7280;">
-                                            <p>Brak danych o użytych surowcach.</p>
-                                            <p><small>Wybierz zlecenie, aby załadować listę surowców.</small></p>
-                                            </div>';
-                                }
+                                $iloscFormatowana = $surowiec['ilosc'] < 1 
+                                    ? number_format($surowiec['ilosc'], 2) 
+                                    : number_format($surowiec['ilosc'], $surowiec['ilosc'] == intval($surowiec['ilosc']) ? 0 : 2);
                                 
-                                $html = '<div style="overflow-x: auto;">';
-                                $html .= '<table class="w-full text-left border-collapse border border-gray-300">';
-                                $html .= '<thead>';
-                                $html .= '<tr style="background-color: #f9fafb;">';
-                                $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Nazwa</th>';
-                                $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Kod</th>';
-                                $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Ilość</th>';
-                                $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Cena jedn.</th>';
-                                $html .= '<th class="py-3 px-4 font-semibold text-gray-700 border-b border-gray-300">Koszt</th>';
+                                $html .= '<td class="py-2 px-4">' . $iloscFormatowana . ' ' . htmlspecialchars($surowiec['jednostka']) . '</td>';
+                                $html .= '<td class="py-2 px-4">' . number_format($surowiec['cena_jednostkowa'], 2) . ' PLN</td>';
+                                $html .= '<td class="py-2 px-4 font-semibold">' . number_format($surowiec['koszt'], 2) . ' PLN</td>';
                                 $html .= '</tr>';
-                                $html .= '</thead>';
-                                $html .= '<tbody>';
                                 
-                                $suma = 0;
-                                
-                                foreach ($surowce as $surowiec) {
-                                    $html .= '<tr style="border-bottom: 1px solid #e5e7eb;">';
-                                    $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['nazwa']) . '</td>';
-                                    $html .= '<td class="py-2 px-4">' . htmlspecialchars($surowiec['kod']) . '</td>';
-                                    
-                                    $iloscFormatowana = $surowiec['ilosc'] < 1 
-                                        ? number_format($surowiec['ilosc'], 2) 
-                                        : number_format($surowiec['ilosc'], $surowiec['ilosc'] == intval($surowiec['ilosc']) ? 0 : 2);
-                                    
-                                    $html .= '<td class="py-2 px-4">' . $iloscFormatowana . ' ' . htmlspecialchars($surowiec['jednostka']) . '</td>';
-                                    $html .= '<td class="py-2 px-4">' . number_format($surowiec['cena_jednostkowa'], 2) . ' PLN</td>';
-                                    $html .= '<td class="py-2 px-4 font-semibold">' . number_format($surowiec['koszt'], 2) . ' PLN</td>';
-                                    $html .= '</tr>';
-                                    
-                                    $suma += $surowiec['koszt'];
-                                }
-                                
-                                $html .= '</tbody>';
-                                $html .= '<tfoot>';
-                                $html .= '<tr style="background-color: #f3f4f6; font-weight: bold;">';
-                                $html .= '<td colspan="4" class="py-3 px-4 text-right">SUMA KOSZTÓW:</td>';
-                                $html .= '<td class="py-3 px-4 text-lg">' . number_format($suma, 2) . ' PLN</td>';
-                                $html .= '</tr>';
-                                $html .= '</tfoot>';
-                                $html .= '</table>';
-                                $html .= '</div>';
-                                
-                                return new \Illuminate\Support\HtmlString($html);
-                            })
-                            ->reactive()
-                            ->live(),
-                    ])
-                    ->collapsed()
-                    ->collapsible()
-                    ->columnSpanFull(),
-                    
-                Forms\Components\Hidden::make('surowce_uzyte')
-                    ->dehydrated(),
-            ]);
-    }
+                                $suma += $surowiec['koszt'];
+                            }
+                            
+                            $html .= '</tbody>';
+                            $html .= '<tfoot>';
+                            $html .= '<tr style="background-color: #f3f4f6; font-weight: bold;">';
+                            $html .= '<td colspan="4" class="py-3 px-4 text-right">SUMA KOSZTÓW:</td>';
+                            $html .= '<td class="py-3 px-4 text-lg">' . number_format($suma, 2) . ' PLN</td>';
+                            $html .= '</tr>';
+                            $html .= '</tfoot>';
+                            $html .= '</table>';
+                            $html .= '</div>';
+                            
+                            return new \Illuminate\Support\HtmlString($html);
+                        })
+                        ->reactive()
+                        ->live(),
+                ])
+                ->collapsed()
+                ->collapsible()
+                ->columnSpanFull(),
+                
+            Forms\Components\Hidden::make('surowce_uzyte')
+                ->dehydrated(),
+        ]);
+}
 
     public static function table(Table $table): Table
     {
@@ -287,39 +299,61 @@ class PartiaResource extends Resource
                     ->label('Podgląd'),
                 Tables\Actions\EditAction::make()
                     ->label('Edytuj'),
-                Tables\Actions\Action::make('wycofaj')
-                    ->label('Wycofaj partię')
-                    ->icon('heroicon-o-exclamation-triangle')
-                    ->color('danger')
-                    ->visible(fn ($record) => !in_array($record->status, [StatusPartii::WYDANA, StatusPartii::WYCOFANA]))
-                    ->requiresConfirmation()
-                    ->modalHeading('Wycofaj partię')
-                    ->modalDescription('Czy na pewno chcesz wycofać tę partię? Ta akcja spowoduje usunięcie jej z magazynu.')
-                    ->action(function ($record) {
-                        $record->update(['status' => StatusPartii::WYCOFANA]);
-                        
-                        // Utwórz ruch magazynowy wycofania
-                        \App\Models\RuchMagazynowy::create([
-                            'typ_ruchu' => \App\Enums\TypRuchuMagazynowego::KOREKTA_MINUS,
-                            'typ_towaru' => 'produkt',
-                            'towar_id' => $record->produkt_id,
-                            'numer_partii' => $record->numer_partii,
-                            'ilosc' => $record->ilosc_wyprodukowana,
-                            'jednostka' => 'szt',
-                            'cena_jednostkowa' => 0,
-                            'wartosc' => 0,
-                            'data_ruchu' => now(),
-                            'zrodlo_docelowe' => 'Wycofanie partii',
-                            'uwagi' => 'Partia wycofana przez użytkownika',
-                            'user_id' => auth()->id(),
-                        ]);
-                        
-                        \Filament\Notifications\Notification::make()
-                            ->title('Partia wycofana')
-                            ->body('Partia została wycofana z magazynu.')
-                            ->success()
-                            ->send();
-                    }),
+// W PartiaResource - zaktualizuj akcję wycofaj:
+
+Tables\Actions\Action::make('wycofaj')
+    ->label('Wycofaj partię')
+    ->icon('heroicon-o-exclamation-triangle')
+    ->color('danger')
+    ->visible(fn ($record) => !in_array($record->status, [StatusPartii::WYDANA, StatusPartii::WYCOFANA]))
+    ->requiresConfirmation()
+    ->modalHeading('Wycofaj partię')
+    ->modalDescription('Czy na pewno chcesz wycofać tę partię? Ta akcja spowoduje usunięcie jej z magazynu.')
+    ->action(function ($record) {
+        DB::transaction(function () use ($record) {
+            // Zmień status partii
+            $record->update(['status' => StatusPartii::WYCOFANA]);
+            
+            // Znajdź pozycję w magazynie
+            $stanMagazynu = \App\Models\StanMagazynu::where('typ_towaru', 'produkt')
+                ->where('towar_id', $record->produkt_id)
+                ->where('numer_partii', $record->numer_partii)
+                ->first();
+            
+            if ($stanMagazynu) {
+                // Usuń z magazynu lub zmniejsz ilość
+                if ($stanMagazynu->ilosc_dostepna <= $record->ilosc_wyprodukowana) {
+                    $stanMagazynu->delete(); // Usuń całą pozycję
+                } else {
+                    $stanMagazynu->update([
+                        'ilosc_dostepna' => $stanMagazynu->ilosc_dostepna - $record->ilosc_wyprodukowana
+                    ]);
+                }
+            }
+            
+            // Utwórz ruch magazynowy wycofania
+            \App\Models\RuchMagazynowy::create([
+                'typ_ruchu' => 'korekta_minus',
+                'typ_towaru' => 'produkt',
+                'towar_id' => $record->produkt_id,
+                'numer_partii' => $record->numer_partii,
+                'ilosc' => $record->ilosc_wyprodukowana,
+                'jednostka' => 'szt',
+                'cena_jednostkowa' => 0,
+                'wartosc' => 0,
+                'data_ruchu' => now(),
+                'zrodlo_docelowe' => 'Wycofanie partii',
+                'uwagi' => 'Partia wycofana przez użytkownika',
+                'user_id' => auth()->id(),
+            ]);
+        });
+        
+        \Filament\Notifications\Notification::make()
+            ->title('Partia wycofana')
+            ->body('Partia została wycofana z magazynu.')
+            ->success()
+            ->send();
+    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([

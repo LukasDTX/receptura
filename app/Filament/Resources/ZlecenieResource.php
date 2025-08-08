@@ -294,6 +294,13 @@ class ZlecenieResource extends Resource
                     ->label('Planowana realizacja')
                     ->date()
                     ->sortable(),
+                Tables\Columns\TextColumn::make('data_waznosci')
+                    ->label('Data ważności')
+                    ->date()
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('numer_partii')
+                    ->label('Numer partii')
+                    ->sortable(),
                 Tables\Columns\SelectColumn::make('status')
                     ->label('Status')
                     ->options([
@@ -353,18 +360,20 @@ class ZlecenieResource extends Resource
         return [
             Tables\Actions\EditAction::make()
                 ->label('Edytuj')
-                ->icon('heroicon-o-pencil'),
+                ->icon('heroicon-o-pencil')
+                ->visible(fn ($record) => $record->status === 'nowe'),
                 
             Tables\Actions\Action::make('drukuj')
                 ->label('Drukuj')
                 ->icon('heroicon-o-printer')
                 ->url(fn (Zlecenie $record): string => route('zlecenie.drukuj', $record))
+                ->visible(fn ($record) => $record->status === 'zrealizowane' || $record->status === 'w_realizacji')
                 ->openUrlInNewTab(),
                 
-            $actionsService->createSprawdzDostepnoscAction(),
+            $actionsService->createSprawdzDostepnoscAction()->visible(fn ($record) => $record->status === 'nowe'),
             $actionsService->createZobaczPobraneSurowceAction(),
-            $actionsService->createEksportPobranychSurowcowAction(),
-            $actionsService->createPobierzSurowceAction(),
+            // $actionsService->createEksportPobranychSurowcowAction(),
+            $actionsService->createUruchomProdukcjeAction(),
             $actionsService->createUtworzPartieAction(),
         ];
     }
